@@ -58,4 +58,33 @@
 % The following definition will also output a warning to the console
 \newcommand{\FIXME}[1]{\typeout{**FIXME** #1}\textbf{[FIXME: #1]}}
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% My commands
+
+\newcommand{\smtlink}{\texttt{Smtlink}\xspace}
+\newcommand{\zthree}{\texttt{Z3}\xspace}
+\newcommand{\acltwo}{\texttt{ACL2}\xspace}
+\newcommand{\python}{\texttt{Python}\xspace}
+\newcommand{\Gtcp}{\ensuremath{G_{\mathrm{tcp}}}}
+\newcommand{\Gsmt}{\ensuremath{G_{\mathrm{smt}}}}
+\newcommand{\Hsmt}[1]{\ensuremath{H_{\mathrm{smt,#1}}}}
+\newcommand{\fsmt}{\ensuremath{\mathtt{f}_{\mathrm{smt}}}}
+\newcommand{\facl}{\ensuremath{\mathtt{f}_{\mathrm{acl2}}}}
+\newcommand{\hide}[1]{}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{corollary}{Corollary}[theorem]
+\newtheorem{lemma}[theorem]{Lemma}
+
+\newcommand*\Yan{\textcolor{YanFavoriteColor}}
+\newcommand*\Mark{\textcolor{MarkFavoriteColor}}
+
+% \codelinelen, length for a one-line snippet of code (if we need to shrink it)
+% If I knew the way to calculate the minimum of two lengths, I'd use it here.
+\newlength{\codelinelen}
+\newcommand{\codeline}[1]{%
+  \setlength{\codelinelen}{\textwidth}%
+  \addtolength{\codelinelen}{-4em}%
+  \rule{2em}{0ex}\resizebox{\codelinelen}{!}{\texttt{#1}}}
+
 % END

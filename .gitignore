@@ -16,4 +16,5 @@
 *.vrb
 *.dblite
 *~
+auto/*
 diss.pdf

@@ -1,0 +1,387 @@
+\chapter{Soundness}
+\label{ch:Soundness}
+
+\section{The Soundness Argument}\label{sec:SoundArg}
+Given the original goal $G$, \smtlink{} uses a series of verified
+clause-processors to transforms $G$ into a goal $\Gtcp$ that can be readily
+translated into \zthree{}.
+Clause processors are programs that transform an input clause into a conjunction
+of output clauses.
+When a clause processor is verified, the theorem that the conjunction of output
+clauses imply the input clause is established.
+Therefore, we know $\Gtcp$ implies the original goal $G$ and the transformation
+steps are sound.
+After the verified clause-processors, a final trusted clause-processor
+translates $\Gtcp$ into \zthree{}. We refer to this translated form as $\Gsmt$.
+
+Let $x_1$, $x_2$, \ldots, $x_n$ denote the free variables in $\Gtcp$,
+let $\Gsmt$ denote the translated goal,
+and $\tilde{x}_1$, $\tilde{x}_2$, \ldots, $\tilde{x}_n$ denote
+the free variables of $\Gsmt$.
+
+
+
+\section{Soundness for Uninterpreted Functions}\label{sec:SoundUninterpreted}
+
+\section{Soundness for Types}\label{sec:SoundType}
+
+\endinput
+
+\section{Types, Theories, and Soundness}\label{sec:theories}
+\smtlink{} translates the original goal, $G$ to an expanded goal, $\Gtcp$
+for the trusted clause processor through a series of verified clause processors.
+Thus, we regard the translation to $\Gtcp$ as sound.
+The trusted clause processor translates $\Gtcp$ into a form that can be checked
+by the SMT solver; we refer to this translated form as $\Gsmt$.
+Let $x_1$, $x_2$, \ldots, $x_n$ denote the free variables in $\Gtcp$,
+let $\Gsmt$ denote the translated goal,
+and $\tilde{x}_1$, $\tilde{x}_2$, \ldots, $\tilde{x}_n$ denote
+the free variables of $\Gsmt$.
+For soundness, we want
+\begin{equation}\label{eq:soundness}\begin{array}{rcl}
+  \mathrm{SMT} \vdash \Gsmt &\Rightarrow& \mathrm{ACL2} \vdash \Gtcp
+\end{array}\end{equation}
+In the remainder, we assume
+\begin{itemize}
+  \item ACL2 and the SMT solver are both sound for their respective theories.
+  \item The SMT solver is a decision procedure for a decidable fragment of first-order logic.
+    In particular, this holds for Z3, the only SMT solver that is currently
+    supported by \smtlink{}. In addition, we are working with a quantifier-free
+    fragment of Z3's logic.
+  \item There is a one-to-one correspondence between the free variables of $\Gtcp$
+    and the free variables of $\Gsmt$.
+    This is the case with the current implementation of \smtlink{}.
+\end{itemize}
+
+Now, suppose that $\Gtcp$ is not a theorem in ACL2.  Then, by G\"{o}del's
+Completeness Theorem, there exists a model of the ACL2 axioms that satisfies
+$\neg \Gtcp$. We need to show that in this case there exists a model of the SMT
+solver's axioms that satisfies $\neg \Gsmt$.  There are two issues that we must
+address. First, we need to provide, for the interpretation of any function
+symbol $\facl$ in $\Gtcp$, an interpretation for the corresponding function
+symbol $\fsmt$ in $\Gsmt$.
+This brings us to the second issue: the logic of ACL2 is untyped, but the logic
+of SMT solvers including Z3 is many-sorted.
+Thus, there are models of the ACL2 axioms that have no correspondence with the
+models of the SMT solver.
+We restrict our attention to goals, $\Gtcp$ where the type of each subterm in the
+formula can be deduced.  We refer to such terms as translatable.  If $\Gtcp$ is
+not translatable, then \smtlink{} will fail to prove it.
+
+For the remainder, we restrict our attention to translatable goals.
+Because $\Gtcp$ is translatable, there is a set $R$ of unary recognizer functions
+(primitives such as rationalp that return a boolean) and also a set $S$ of other
+functions, such that every function symbol in $\Gtcp$ is a member of $R$ or of $S$,
+and every function in $S$ is ``well-typed'' with respect to $R$ in some sense that
+we can define roughly as follows.
+We associate each function symbol $\facl$ in $S$ with a function symbol $\fsmt$
+of Z3, and each predicate $r$ in $R$ with a type in Z3.
+The trusted clause processor checks that there is a ``type-hypothesis'' associated
+with every free variable of $\Gtcp$ and a fixing function for every type-ambiguous
+constant (e.g.\ \texttt{nil}) -- $\Gtcp$ holds trivially if any of these
+type-hypotheses are violated.
+For every function $\facl$ in $S$, we associate a member of $R$ to each of its
+arguments (i.e.\ a ``type'') and also to the result.
+% This also applies to function
+% \texttt{if} where its two branches have to satisfy the same function from $R$.
+For user-defined functions (i.e.\ uninterpreted function for the SMT solver),
+\smtlink{} generates a subgoal for each call to $\fsmt$: if the arguments satisfy
+their declared types (i.e., predicates from $R$), then the result must satisfy its
+declared type as well.
+For built-in ACL2 functions (e.g.\ \texttt{binary-plus}) we assume the ``obvious''
+theorems are present in the ACL2 logical world.
+Now suppose we have a model, $M_1$, of $\neg \Gtcp$, and consider the submodel,
+$M_2$, containing just those objects $m$ such that $m$ satisfies at least one
+predicate in $R$ that occurs in $\Gtcp$. Note that $M_2$ is closed
+under (the interpretation of) every operation in $S$, because $\neg \Gtcp$
+implies that all of the ``type-hypotheses'' of $\Gtcp$ are true in $M_1$. This
+essentially excludes ``bad atoms'', as defined by the function
+\texttt{acl2::bad-atom}.
+Then because $\Gtcp$ is quantifier-free, $M_2$ also satisfies $\neg \Gtcp$.
+We can turn $M_2$ into a model $M_2'$ for the language of Z3, by assigning the
+appropriate type to every object.  (As noted in Section~\ref{sec:reals}, $M_2'$
+satisfies the theory of Z3 if $M_2$ is a model of ACL2(r); but for ACL2 that is
+not the case, so in future work, we expect to construct an extension of $M_2'$
+that satisfies all of the axioms for real closed fields.)
+Then we have the claim: for every assignment $s$ from the free
+variables of $\Gtcp$ to $M_2$ with corresponding typed assignment $s'$ from the
+free variables of $\Gsmt$ to $M_2'$ , if $\neg \Gtcp$ is true in $M_2$
+under $s$, then $\neg \Gsmt$ is true in $M_2'$ under $s'$.
+Thus, if $\Gtcp$ is translatable, and $\neg \Gsmt$ is unsatisfiable, we conclude
+that $\Gtcp$ is a theorem in ACL2.
+
+In the rest of this section, we discuss for each of the recognizer functions and
+each of the basic functions in ACL2, how we associate them with the
+corresponding Z3 functions.
+
+
+\subsection{Booleans, Integers, Rationals, and Reals}\label{sec:reals}
+If a term is a boolean constant, then the translation to the SMT solver is direct.
+Likewise, if $x_i$ is free in $\Gtcp$ and \texttt{(booleanp $x_i$)}
+is one of the hypotheses of $\Gtcp$, then $\Gtcp$ holds trivially in the case that
+$x_i \not\in \{\texttt{t},\,\texttt{nil}\}$.  Thus, in $\Gsmt$ \smtlink{} can
+represent the hypothesis \texttt{(booleanp $x_i$)} with the declaration\\
+\rule{2em}{0ex}\texttt{x\_i = Bool('x\_i')}\\
+without excluding any satisfying assignments.  We assume that the boolean operations
+of the SMT solver (e.g. \texttt{And}, \texttt{Or}, \texttt{Not}) correspond
+exactly to their ACL2 equivalents when their arguments are boolean.  If a boolean
+operator is applied to a non-boolean value, then Z3 throws an exception, and we
+regard $G$ as non-translatable.
+
+Similar arguments apply in the case that $x_i$ is an integer, rational, or real
+number. We represent ACL2 rational numbers as Z3 real numbers. Because every
+rational number is a real number, any satisfying assignment of rational numbers
+to rational variables in $\neg \Gtcp$ has a corresponding assignment for $\neg
+\Gsmt$. Thus, $\Gsmt$ is a generalization of $\Gtcp$.
+We note that for ACL2, formally proving the soundness of this generalization
+requires extending our previously discussed $M_2'$ model into a model that
+satisfies the theory of real closed
+fields~\footnote{http://smtlib.cs.uiowa.edu/theories-Reals.shtml}, because we
+are translating rationals in ACL2 to reals in Z3. We haven't wrapped our heads
+around how to do that extension in a many-sorted setting, therefore we designate
+this to be future work. As with booleans, we assume that arithmetic and
+comparison operators have equivalent semantics in ACL2 and the 
+SMT solver. In fact, we use the Python interface code to enforce this
+assumption. As an example, ACL2 allows the boolean values \texttt{t} and
+\texttt{nil} to be used in arithmetic expressions -- both are treated as 0.
+Z3 also allows \texttt{True} and \texttt{False} to be used in integer
+arithmetic, with \texttt{True} treated as 1 and \texttt{False} treated as 0.
+To ensure that $\Gsmt \Rightarrow \Gtcp$, our Python code checks the sorts of the
+arguments to arithmetic operators to ensure that they are integers or reals, where
+the interpretations are the same for both ACL2 and Z3.
+
+When \smtlink{} is used with ACL2(r), non-classical functions are non-translatable.
+We believe that if $\neg \Gtcp$ is classical and satisfiable,
+then there exists a satisfying assignment to $\neg \Gtcp$ where all real-valued
+variables are bound to standard values. We believe the sketched proof in the
+beginning of Section~\ref{sec:theories} works well for ACL2(r). If we are wrong,
+we hope that one of the experts in non-standard analysis at the workshop will
+correct us.
+
+\subsection{Symbols}
+A very important basic type in ACL2 is \texttt{symbolp}. We represent symbols
+using an algebraic datatype in Z3. In the z3 interface class, we define a
+\texttt{Datatype} called \texttt{z3sym}, with a single field of type
+\texttt{IntSort}. Symbol variables are defined using the datatype
+\texttt{z3sym}. We then define a class called \texttt{Symbol}. This class
+provides a variable \texttt{count} and a variable \texttt{dict}. It also
+provides a function called \texttt{intern} for generating a symbol constant.
+This class keeps a dictionary mapping from symbol names to the generated
+\texttt{z3sym} symbol constants. This creates an injective mapping from symbols
+to natural numbers. 
+All symbol constants that appeared in the term are mapped onto the first
+several, distinct, naturals.
+
+If a satisfying assignment to $\neg \Gtcp$ binds a symbol-valued variable
+to a symbol-constant that doesn't appear in $\Gtcp$, then in our soundness
+argument, we construct a new symbol value for $\neg \Gsmt$ using an integer
+value distinct from the ones used so far -- we won't run out.
+Thus, all symbol values in a satisfying assignment to $\neg \Gtcp$
+can be translated to corresponding values for $\neg \Gsmt$.
+The only operations that we support for symbols are comparisons for equality or
+not-equals.  We assume that these operations have corresponding semantics in
+ACL2 and the SMT solver.
+
+
+\subsection{FTY types}
+We have added support for common \texttt{fty} types that enable \smtlink{} to
+automatically construct bridges from the untyped logic of ACL2 to the typed logic of Z3.
+Currently, \smtlink{} infers constructor/destructor relations and other properties
+of these types from the \texttt{fty::flextypes-table}.
+Thus, the use of \texttt{fty} types extends
+the trusted code to include the correctness of these tables.  This trust is mitigated
+by two considerations.  First, \smtlink{} only uses \texttt{fty} types that have been
+specified by the user in a hint to the \smtlink{} clause processor.  If the user
+provides no such hints, no \texttt{fty} types are used by \smtlink{}, and no
+soundness concerns arise.
+
+Second, we expect that the information that \smtlink{} obtains from these tables could
+be obtained instead from the ACL2 logical world using \texttt{meta-extract} in
+\smtlink{}'s verified clause-processor chain.  We see the current implementation
+as a useful prototype to explore how to seamlessly infer type information from
+code written according to a well-defined type discipline.
+
+\subsubsection{fty::defprod}
+The algebraic datatypes of Z3 correspond directly to \texttt{fty::defprod}.
+\smtlink{} simply declares a Z3 datatype with a single constructor whose
+destructor operators are the field accessors of the product type.
+\smtlink{} requires that the arguments to the \texttt{fty} constructors satisfy
+the constructors' guards -- otherwise $\Gtcp$ is non-translatable.
+The only operations on product types are field accessors, i.e.\ destructors.
+For translatable terms, the SMT type has the same construct/destructor theorems
+as the FTY type.  Thus, the \smtlink{} translation maintains equivalence
+constructors and field accessors of product types.
+
+\subsubsection{fty::deflist}
+Lists are essentially a special case of a product type.  For example,\\
+\noindent\begin{minipage}[t]{.35\textwidth}\label{prog:deflist}
+\begin{lstlisting}[caption=ACL2 deflist,frame=tlrb,style=snippet,language=LISP]{ACL2 deflist}
+(deflist integer-list
+  :elt-type integerp
+  :true-listp t)
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{.61\textwidth}
+\begin{lstlisting}[caption=Z3 Datatype,frame=tlrb,style=snippet,language=Python]{Z3 Datatype}
+integer_list= z3.Datatype('integer_list')
+integer_list.declare('cons',
+                     ('car', _SMT_.IntSort()),
+                     ('cdr', integer_list))
+integer_list.declare('nil')
+integer_list = integer_list.create()
+def integer_list_consp(l):
+  return Not(l == integer\_list.nil)
+\end{lstlisting}
+\end{minipage}
+ACL2 overloads \texttt{cons}, \texttt{car}, and \texttt{cdr} to apply to any list.
+In contrast, Z3's typed logic has a separate \texttt{cons}, \texttt{car}, \texttt{cdr}
+functions for each list type.
+This is why our examples from Section~\ref{sec:expl} require fixing functions to convey
+the type information to the trusted-clause processor.
+We believe that most of the users' burden of typed lists will be removed in a future
+release by adding type-inference to \smtlink{}. There are soundness issues that
+must be addressed. In ACL2, \texttt{(equal (car nil) nil)}.
+In Z3,\\
+\rule{2em}{0ex}\texttt{integer\_list.car(integer\_list.nil)}\\
+is an arbitrary integer.
+To ensure soundness, the trusted-clause processor produces
+the proof obligation \texttt{(consp x)} for every occurrence of \texttt{(car x)}
+that it encounters.
+Under this precondition, the Z3 translation preserves the constructor/destructor
+relationship for lists.
+Likewise\\
+\rule{2em}{0ex}\texttt{integer\_list.cdr(integer\_list.nil)}\\
+is an arbitrary \texttt{integer\_list}.
+Thus, \smtlink{} enforces the \texttt{:true-listp t} declaration for list types.
+Because ``arbitrary'' includes \texttt{integer\_list.nil} in addition to all other \texttt{integer\_list}s,
+these construction
+ensures that the SMT solver can choose the value for \texttt{integer\_list.cdr($\tilde{\texttt{x}}$)} for $\Gsmt$
+that corresponds to the value of \texttt{(cdr x)} for any assignments for $\Gtcp$.
+The $\Gsmt$ is a generalization of $\Gtcp$.
+
+\subsubsection{fty::defalist}
+\smtlink{} represents alists with SMT arrays.  We only support the operations
+\texttt{acons} and \texttt{assoc-equal} for alists.  Then we have:
+\begin{lstlisting}[style=snippet]
+(defthm alist-axioms
+  (implies (not (equal key1 key2))
+           (and (equal (assoc key1 (acons key1 value alist)) value))
+                (equal (assoc key1 (acons key2 value alist)) (assoc key1 alist)))
+                (equal (assoc key1 nil) nil))
+\end{lstlisting}
+The corresponding theorem in the theory of arrays is
+\begin{lstlisting}[style=snippet]
+(defthm array-axioms
+  (implies (not (equal addr1 addr2))
+           (and (equal (load addr1 (store addr1 value array)) value))
+                (equal (load addr1 (store addr2 value array)) (load addr1 array))))
+\end{lstlisting}
+Note that \smtlink{} does not support operations such as \texttt{cdr},
+\texttt{nth}, \texttt{member}, or \texttt{delete-assoc} that would
+``remove'' elements from an alist. Also, Z3 arrays are typed.
+
+The key issue in the translation is how to handle the case when a key is not found in the
+alist (ACL2) or array (SMT).
+Our solution is to make the element type of the SMT array be an option type called
+\texttt{keyType\_elementType}.  This type can either be a \texttt{(key, value)} tuple
+or \texttt{keyType\_elementType.nil}.
+Thus, any value returned by \texttt{assoc-equal} with proper alist and key types
+has a corresponding \texttt{keyType\_elementType} value.  Thus, any value for an
+\texttt{assoc-equal} terms in $\Gtcp$ can be represented in $\Gsmt$.
+
+When applying \texttt{cdr} to a \texttt{keyType\_elementType}, we must ensure that the
+\texttt{keyType\_elementType} value is not nil.  This is analogous to the issue with lists:
+in ACL2, \texttt{(equal (cdr nil) nil)} but in Z3,\\
+\rule{2em}{0ex}\texttt{keyType\_elementType.cdr(keyType\_elementType.nil)}\\
+is an arbitrary value of \texttt{elementType}.
+Thus, the trusted-clause processor produces the proof obligation for ACL2
+\texttt{(not (null x))} for every occurrence of \texttt{(cdr x)} when \texttt{x} is the
+return value from \texttt{assoc-equal}.
+Under this precondition, \texttt{cdr} is only applied to non-nil values from
+\texttt{assoc-equal} and we maintain correspondence of values for terms in
+$\Gtcp$ and $\Gsmt$. 
+
+By only providing \texttt{acons} and \texttt{assoc-equal}, the \smtlink{}
+support for alists is rather limited.  Nevertheless, we have found it to be very
+useful when reasoning about problems where alists are used as simple
+dictionaries. 
+
+\subsubsection{fty::defoption}
+As is shown in Program~\ref{prog:defoption}, the translation of
+\texttt{defoption} is straightforward.
+
+\noindent\begin{minipage}{.35\textwidth}\label{prog:defoption}
+\begin{lstlisting}[caption=ACL2 deflist,frame=tlrb,style=snippet,language=LISP]{ACL2 defoption}
+(defoption maybe-integer
+           integerp)
+
+
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}{.61\textwidth}
+\begin{lstlisting}[caption=Z3 Datatype,frame=tlrb,style=snippet,language=Python]{Z3 Datatype}
+maybe_integer= z3.Datatype('maybe_integer')
+maybe_integer.declare('some', ('val', IntSort()))
+maybe_integer.declare('nil')
+maybe_integer = maybe_integer.create()
+\end{lstlisting}
+\end{minipage}
+
+In this example, the \texttt{maybe-integer-p} recognizer maps to
+\texttt{maybe_integer} type. The constructor \texttt{maybe-integer-some} maps to
+\texttt{maybe_integer.some}. The destructor \texttt{maybe-integer-some->val} 
+maps to \texttt{maybe_integer.val}. The none type \texttt{nil} maps to
+\texttt{maybe_integer.nil}. Typical users of FTY types won't write
+\texttt{maybe-integer-some} constructor and \texttt{maybe-integer-some->val}
+destructors. They will first check if a term is nil, and then assume the term is
+an \texttt{integerp}. When a program returns an \texttt{integerp}, ACL2 knows it
+is also a \texttt{maybe-integerp}. Due to lack of type inference capabilities,
+\smtlink{} currently requires the user to use those constructors, therefore
+maintaining the option type through function calls where a
+\texttt{maybe-integerp} is needed and use the destructors where an
+\texttt{integerp} is needed.  The constructor function satisfies the same theorems
+in ACL2 and Z3.  Therefore, it's sound.  For the field-accessor, when trying to
+access field of a \texttt{nil}, ACL2 returns the fixed default value, while Z3
+will return arbitrary value of that \texttt{some} type. The Z3 values include
+the ACL2 value.  \texttt{nil} is trivially the same. Thus, the \smtlink{}
+translation maintains equivalence of values of terms for constructors and field
+accessors of option types.
+
+\subsection{Uninterpreted Functions}
+The user can direct \smtlink{} to represent some functions as uninterpreted functions
+in the SMT theories.  Let \texttt{(f arg1 arg2 \ldots argk)} be a function instance
+in $\Gtcp$.  \smtlink translates this to\\
+\rule{2em}{0ex}\texttt{f\_smt(arg\_smt1, arg\_smt2, \ldots, arg\_smtk)}\\
+The constraints for \texttt{f\_smt} are the types of the argument, the type of the
+result, and any user-specified constraints.
+If the function instance in $\Gtcp$ violates the argument type constraints, then
+the term is untranslatable -- currently, \smtlink{} produces an SMT term
+that provokes a \texttt{z3types.Z3exception}.
+For each function instance in $\Gtcp$ that is translated to an uninterpreted function,
+\smtlink{} produces a proof obligation for ACL2 that the function instances in
+$\Gtcp$ satisfy the given type-recognizers.  Likewise, if the user specified
+any other constraints for this function, they are returned as further ACL2 proof
+obligations.
+Under these preconditions, any value that can be produced by \texttt{f} satisfies the
+constraints for \texttt{f\_smt}.
+Thus, we maintain correspondence of values for terms in $\Gtcp$ and $\Gsmt$.
+
+% \subsection{Soundness Wrap-Up}
+% Terms in SMT solvers such as Z3 are typed.  \smtlink{} support booleans, integers,
+% reals and rationals, symbols, product types, lists, alists, and option types.  For
+% each of these, we have shown that for all operations supported for each class of
+% types, terms in $\Gsmt$ can have the values corresponding to those of $\Gtcp$.
+% More generally, $\Gsmt$ can be a generalization of $\Gtcp$ by allowing terms of
+% $\Gsmt$ to have values that the corresponding terms of $\Gtcp$ cannot.
+% In cases where ACL2 and Z3 interpretations of terms could diverge, the
+% trusted clause processor generates preconditions that are verified by ACL2 to ensure
+% that the functions in question are only applied to terms for which their
+% ACL2 and Z3 behaviors coincide.
+% The key to soundness is that if there exists a valuation of the free variables
+% of $\Gtcp$ such that $\Gtcp$ is false, then there is a corresponding valuation
+% of the free variables of $\Gsmt$ such that $\Gsmt$ is false.  Thus, if there
+% is a counter-example for $\Gtcp$, then $\neg\Gsmt$ is satisfiable.  We trust
+% the SMT solver to find a satisfying assignment to $\Gtcp$ if one exists (or
+% report ``unknown'').  Thus, if the SMT solver reports ``unsat'', we conclude
+% that $\neg\Gsmt$ is unsatisfiable; therefore, $\neg\Gtcp$ is unsatisfiable, and
+% the original goal is indeed a theorem.
