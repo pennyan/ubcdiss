@@ -19,40 +19,25 @@ let $\Gsmt$ denote the translated goal,
 and $\tilde{x}_1$, $\tilde{x}_2$, \ldots, $\tilde{x}_n$ denote
 the free variables of $\Gsmt$.
 
-
-
-\section{Soundness for Uninterpreted Functions}\label{sec:SoundUninterpreted}
-
-\section{Soundness for Types}\label{sec:SoundType}
-
-\endinput
-
-\section{Types, Theories, and Soundness}\label{sec:theories}
-\smtlink{} translates the original goal, $G$ to an expanded goal, $\Gtcp$
-for the trusted clause processor through a series of verified clause processors.
-Thus, we regard the translation to $\Gtcp$ as sound.
-The trusted clause processor translates $\Gtcp$ into a form that can be checked
-by the SMT solver; we refer to this translated form as $\Gsmt$.
-Let $x_1$, $x_2$, \ldots, $x_n$ denote the free variables in $\Gtcp$,
-let $\Gsmt$ denote the translated goal,
-and $\tilde{x}_1$, $\tilde{x}_2$, \ldots, $\tilde{x}_n$ denote
-the free variables of $\Gsmt$.
 For soundness, we want
 \begin{equation}\label{eq:soundness}\begin{array}{rcl}
-  \mathrm{SMT} \vdash \Gsmt &\Rightarrow& \mathrm{ACL2} \vdash \Gtcp
+\mathrm{SMT} \vdash \Gsmt &\Rightarrow& \mathrm{ACL2} \vdash \Gtcp
 \end{array}\end{equation}
 In the remainder, we assume
 \begin{itemize}
-  \item ACL2 and the SMT solver are both sound for their respective theories.
-  \item The SMT solver is a decision procedure for a decidable fragment of first-order logic.
-    In particular, this holds for Z3, the only SMT solver that is currently
-    supported by \smtlink{}. In addition, we are working with a quantifier-free
-    fragment of Z3's logic.
-  \item There is a one-to-one correspondence between the free variables of $\Gtcp$
-    and the free variables of $\Gsmt$.
-    This is the case with the current implementation of \smtlink{}.
+\item ACL2 and the SMT solver are both sound for their respective theories.
+\item The SMT solver is a decision procedure for a decidable fragment of first-order logic.
+  In particular, this holds for Z3, the only SMT solver that is currently
+  supported by \smtlink{}. In addition, we are working with a quantifier-free
+  fragment of Z3's logic.
+\item There is a one-to-one correspondence between the free variables of $\Gtcp$
+  and the free variables of $\Gsmt$.
+  This is the case with the current implementation of \smtlink{}.
 \end{itemize}
 
+\begin{theorem}
+  for each model in ACL2, there exists a model in Z3
+\end{theorem}
 Now, suppose that $\Gtcp$ is not a theorem in ACL2.  Then, by G\"{o}del's
 Completeness Theorem, there exists a model of the ACL2 axioms that satisfies
 $\neg \Gtcp$. We need to show that in this case there exists a model of the SMT
@@ -67,6 +52,10 @@ models of the SMT solver.
 We restrict our attention to goals, $\Gtcp$ where the type of each subterm in the
 formula can be deduced.  We refer to such terms as translatable.  If $\Gtcp$ is
 not translatable, then \smtlink{} will fail to prove it.
+
+\begin{definition}
+  translatable's definition
+\end{definition}
 
 For the remainder, we restrict our attention to translatable goals.
 Because $\Gtcp$ is translatable, there is a set $R$ of unary recognizer functions
@@ -112,8 +101,15 @@ that $\Gtcp$ is a theorem in ACL2.
 
 In the rest of this section, we discuss for each of the recognizer functions and
 each of the basic functions in ACL2, how we associate them with the
-corresponding Z3 functions.
+corresponding Z3 functions
 
+\section{Soundness for Uninterpreted Functions}\label{sec:SoundUninterpreted}
+
+\section{Soundness for Types}\label{sec:SoundType}
+
+\section{The Trusted Clause Processor}\label{sec:SoundTrusted}
+
+\endinput
 
 \subsection{Booleans, Integers, Rationals, and Reals}\label{sec:reals}
 If a term is a boolean constant, then the translation to the SMT solver is direct.
