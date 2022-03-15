@@ -1,164 +1,202 @@
 \chapter{Soundness}
-\label{ch:Soundness}
+\label{ch:soundness}
 
-\section{The Soundness Argument}\label{sec:SoundArg}
-Given the original goal $G$, \smtlink{} uses a series of verified
-clause-processors to transforms $G$ into a goal $\Gtcp$ that can be readily
-translated into \zthree{}.
-Clause processors are programs that transform an input clause into a conjunction
-of output clauses.
-When a clause processor is verified, the theorem that the conjunction of output
-clauses imply the input clause is established.
-Therefore, we know $\Gtcp$ implies the original goal $G$ and the transformation
-steps are sound.
-After the verified clause-processors, a final trusted clause-processor
-translates $\Gtcp$ into \zthree{}. We refer to this translated form as $\Gsmt$.
+As discussed in Chapter~\ref{ch:arch}, \smtlink{} is composed of several
+verified reflection-based clause-processors that transforms the original goal
+into a form that can be directly translated into Z3.
+A verified clause-processor ensures that the conjunction of output clauses
+implies the input clause.
+Therefore, the soundness of the several verified clause-processors are satisfied
+by default.
+Then \smtlink{} uses a trusted clause-processor for transliterating from the
+language of ACL2 to the language of Z3 with the Python interface.
+In this chapter, we focus on the last trusted clause-processor and discuss how
+we formulate the soundness argument for this last step.
 
-Let $x_1$, $x_2$, \ldots, $x_n$ denote the free variables in $\Gtcp$,
-let $\Gsmt$ denote the translated goal,
-and $\tilde{x}_1$, $\tilde{x}_2$, \ldots, $\tilde{x}_n$ denote
-the free variables of $\Gsmt$.
+\section{The Soundness Argument}\label{sec:soundarg}
+Let $G$ denote the original goal, $\Gtcp$ denote the input goal to the trusted
+clause-processor, and $\Gsmt$ denote the transliterated \acs{SMT} goal. Let
+$x_1$, $x_2$, \ldots, $x_n$ denote the free variables in $\Gtcp$, and
+$\tilde{x}_1$, $\tilde{x}_2$, \ldots, $\tilde{x}_n$ denote the free variables of
+$\Gsmt$.
 
 For soundness, we want
 \begin{equation}\label{eq:soundness}\begin{array}{rcl}
 \mathrm{SMT} \vdash \Gsmt &\Rightarrow& \mathrm{ACL2} \vdash \Gtcp
 \end{array}\end{equation}
-In the remainder, we assume
-\begin{itemize}
-\item ACL2 and the SMT solver are both sound for their respective theories.
-\item The SMT solver is a decision procedure for a decidable fragment of first-order logic.
-  In particular, this holds for Z3, the only SMT solver that is currently
-  supported by \smtlink{}. In addition, we are working with a quantifier-free
-  fragment of Z3's logic.
-\item There is a one-to-one correspondence between the free variables of $\Gtcp$
+
+In the remainder, we make below assumptions.
+\begin{assumption}
+  ACL2 and the \acs{SMT} solver are both sound for their respective
+  theories.
+\end{assumption}
+\smtlink{} trust both ACL2 and Z3.
+
+\begin{assumption}
+  The \acs{SMT} solver is a decision procedure for a decidable fragment of
+  first-order logic.
+\end{assumption}
+In particular, this holds for Z3, the \acs{SMT} solver that is supported
+by \smtlink{}.
+In addition, we are working with a quantifier-free fragment of Z3's
+logic.
+
+\begin{assumption}
+  There is a one-to-one correspondence between the free variables of $\Gtcp$
   and the free variables of $\Gsmt$.
-  This is the case with the current implementation of \smtlink{}.
-\end{itemize}
+\end{assumption}
+This is the case with the current implementation of \smtlink{}. The
+transliteration ensures that there is no naming collision.
 
-\begin{theorem}
-  for each model in ACL2, there exists a model in Z3
-\end{theorem}
 Now, suppose that $\Gtcp$ is not a theorem in ACL2.  Then, by G\"{o}del's
-Completeness Theorem, there exists a model of the ACL2 axioms that satisfies
-$\neg \Gtcp$. We need to show that in this case there exists a model of the SMT
-solver's axioms that satisfies $\neg \Gsmt$.  There are two issues that we must
-address. First, we need to provide, for the interpretation of any function
-symbol $\facl$ in $\Gtcp$, an interpretation for the corresponding function
-symbol $\fsmt$ in $\Gsmt$.
-This brings us to the second issue: the logic of ACL2 is untyped, but the logic
-of SMT solvers including Z3 is many-sorted.
-Thus, there are models of the ACL2 axioms that have no correspondence with the
-models of the SMT solver.
-We restrict our attention to goals, $\Gtcp$ where the type of each subterm in the
-formula can be deduced.  We refer to such terms as translatable.  If $\Gtcp$ is
-not translatable, then \smtlink{} will fail to prove it.
+Completeness Theorem, there exists a model of the ACL2 axioms that
+satisfies $\neg \Gtcp$. We need to show that in this case there exists a model
+of the \acs{SMT} solver's axioms that satisfies $\neg \Gsmt$. There are two
+issues that we must address.
 
-\begin{definition}
-  translatable's definition
-\end{definition}
+First, the logic of ACL2 is untyped, but the logic of SMT solvers
+including Z3 is many-sorted. Thus, there are models of the ACL2
+axioms that have no correspondence with the models of the SMT solver, i.e., the
+models that are not well-typed. We restrict our attention to goals, $\Gtcp$ where
+the type of each subterm in the formula can be deduced.
+We refer to such terms as translatable. If $\Gtcp$ is not translatable, then
+\smtlink{} will fail to prove it. For the remainder, we restrict our attention
+to translatable goals.
 
-For the remainder, we restrict our attention to translatable goals.
+Second, we need to provide, for the interpretation of any function symbol
+$\facl$ in $\Gtcp$, an interpretation for the corresponding function symbol
+$\fsmt$ in $\Gsmt$.
 Because $\Gtcp$ is translatable, there is a set $R$ of unary recognizer functions
-(primitives such as rationalp that return a boolean) and also a set $S$ of other
-functions, such that every function symbol in $\Gtcp$ is a member of $R$ or of $S$,
-and every function in $S$ is ``well-typed'' with respect to $R$ in some sense that
-we can define roughly as follows.
+(primitives such as \texttt{rationalp} that return a boolean) and also a set $S$
+of other functions, such that every function symbol in $\Gtcp$ is a member of $R$
+or of $S$, and every function in $S$ is ``well-typed'' with respect to $R$.
+
+The trusted clause processor checks that there is a ``type-hypothesis'' associated
+with every free variable of $\Gtcp$ -- $\Gtcp$ holds trivially if any of these
+type-hypotheses are violated.
 We associate each function symbol $\facl$ in $S$ with a function symbol $\fsmt$
 of Z3, and each predicate $r$ in $R$ with a type in Z3.
-The trusted clause processor checks that there is a ``type-hypothesis'' associated
-with every free variable of $\Gtcp$ and a fixing function for every type-ambiguous
-constant (e.g.\ \texttt{nil}) -- $\Gtcp$ holds trivially if any of these
-type-hypotheses are violated.
 For every function $\facl$ in $S$, we associate a member of $R$ to each of its
 arguments (i.e.\ a ``type'') and also to the result.
-% This also applies to function
-% \texttt{if} where its two branches have to satisfy the same function from $R$.
-For user-defined functions (i.e.\ uninterpreted function for the SMT solver),
-\smtlink{} generates a subgoal for each call to $\fsmt$: if the arguments satisfy
-their declared types (i.e., predicates from $R$), then the result must satisfy its
-declared type as well.
-For built-in ACL2 functions (e.g.\ \texttt{binary-plus}) we assume the ``obvious''
-theorems are present in the ACL2 logical world.
+\begin{itemize}
+\item For built-in ACL2 functions (e.g.\ \texttt{binary-+}) we assume the
+  ``obvious'' theorems are present in the ACL2 logical world. 
+  \begin{itemize}
+  \item For function \texttt{if}, its two branches have to satisfy the same
+    function from $R$.
+  \end{itemize}
+\item For user-defined functions (i.e.\ uninterpreted function for the SMT
+  solver), \smtlink{} generates a subgoal for each call to $\fsmt$: if the
+  arguments satisfy their declared types (i.e., predicates from $R$), then the
+  result must satisfy its declared type as well.
+\item For user-defined types and their associating functions, \smtlink{}
+  generates subgoals for their typing properties. In addition, subgoals for
+  ensuring their algebraic properties are also returned for proof. We will
+  discuss the properties in detail in later sections.
+\item Each type is associated with an \emph{equality} function of its own. The
+  type of the equality function obviously takes two inputs of the corresponding
+  type and output a boolean.
+  Additional properties are also returned for the equality function.
+\end{itemize}
+
 Now suppose we have a model, $M_1$, of $\neg \Gtcp$, and consider the submodel,
 $M_2$, containing just those objects $m$ such that $m$ satisfies at least one
-predicate in $R$ that occurs in $\Gtcp$. Note that $M_2$ is closed
-under (the interpretation of) every operation in $S$, because $\neg \Gtcp$
-implies that all of the ``type-hypotheses'' of $\Gtcp$ are true in $M_1$. This
-essentially excludes ``bad atoms'', as defined by the function
+predicate in $R$ that occurs in $\Gtcp$.
+Note that $M_2$ is closed under (the interpretation of) every operation in $S$,
+because $\neg \Gtcp$ implies that all of the ``type-hypotheses'' of $\Gtcp$ are
+true in $M_1$.
+This essentially excludes ``bad atoms'', as defined by the function
 \texttt{acl2::bad-atom}.
 Then because $\Gtcp$ is quantifier-free, $M_2$ also satisfies $\neg \Gtcp$.
-We can turn $M_2$ into a model $M_2'$ for the language of Z3, by assigning the
-appropriate type to every object.  (As noted in Section~\ref{sec:reals}, $M_2'$
-satisfies the theory of Z3 if $M_2$ is a model of ACL2(r); but for ACL2 that is
-not the case, so in future work, we expect to construct an extension of $M_2'$
-that satisfies all of the axioms for real closed fields.)
-Then we have the claim: for every assignment $s$ from the free
-variables of $\Gtcp$ to $M_2$ with corresponding typed assignment $s'$ from the
-free variables of $\Gsmt$ to $M_2'$ , if $\neg \Gtcp$ is true in $M_2$
-under $s$, then $\neg \Gsmt$ is true in $M_2'$ under $s'$.
+We can turn $M_2$ into a model $M_2'$ for the language of Z3, by
+assigning the appropriate type to every object.
+(As noted in Section~\ref{subsec:reals}, $M_2'$ satisfies the theory of
+Z3 if $M_2$ is a model of ACL2(r); but for ACL2 that is not the
+case, so in future work, we expect to construct an extension of $M_2'$ that
+satisfies all of the axioms for real closed fields.)
+Then we have the claim: for every assignment $s$ from the free variables of
+$\Gtcp$ to $M_2$ with corresponding typed assignment $s'$ from the free
+variables of $\Gsmt$ to $M_2'$ , if $\neg \Gtcp$ is true in $M_2$ under $s$,
+then $\neg \Gsmt$ is true in $M_2'$ under $s'$.
 Thus, if $\Gtcp$ is translatable, and $\neg \Gsmt$ is unsatisfiable, we conclude
 that $\Gtcp$ is a theorem in ACL2.
 
-In the rest of this section, we discuss for each of the recognizer functions and
-each of the basic functions in ACL2, how we associate them with the
-corresponding Z3 functions
+In the rest of this chapter, we discuss for each of the recognizer functions and
+each of the other functions in ACL2, how we associate them with the
+corresponding Z3 functions.
 
-\section{Soundness for Uninterpreted Functions}\label{sec:SoundUninterpreted}
+\section{Built-in Types}\label{sec:soundbuiltin}
+\smtlink{} supports five built-in datatypes including booleans, integers,
+rationals, reals (if in ACL2(r)) and symbols. We discuss treatment for soundness
+of each type. 
 
-\section{Soundness for Types}\label{sec:SoundType}
-
-\section{The Trusted Clause Processor}\label{sec:SoundTrusted}
-
-\endinput
-
-\subsection{Booleans, Integers, Rationals, and Reals}\label{sec:reals}
-If a term is a boolean constant, then the translation to the SMT solver is direct.
-Likewise, if $x_i$ is free in $\Gtcp$ and \texttt{(booleanp $x_i$)}
-is one of the hypotheses of $\Gtcp$, then $\Gtcp$ holds trivially in the case that
-$x_i \not\in \{\texttt{t},\,\texttt{nil}\}$.  Thus, in $\Gsmt$ \smtlink{} can
+\subsection{Booleans}\label{subsec:bools}
+If a term is a boolean constant, then the translation to the \acs{SMT} solver is
+direct.
+If $x_i$ is free in $\Gtcp$ and \texttt{(booleanp $x_i$)} is one of the
+hypotheses of $\Gtcp$, then $\Gtcp$ holds trivially in the case that $x_i
+\not\in \{\texttt{t},\,\texttt{nil}\}$.  Thus, in $\Gsmt$, \smtlink{} can
 represent the hypothesis \texttt{(booleanp $x_i$)} with the declaration\\
-\rule{2em}{0ex}\texttt{x\_i = Bool('x\_i')}\\
-without excluding any satisfying assignments.  We assume that the boolean operations
-of the SMT solver (e.g. \texttt{And}, \texttt{Or}, \texttt{Not}) correspond
-exactly to their ACL2 equivalents when their arguments are boolean.  If a boolean
-operator is applied to a non-boolean value, then Z3 throws an exception, and we
-regard $G$ as non-translatable.
+\rule{2em}{0ex}\texttt{x\_i = Const('x\_i', BoolSort())}\\
+without excluding any satisfying assignments.
+We assume that the boolean operations of the \acs{SMT} solver (e.g. \texttt{Or},
+and \texttt{Not}) correspond exactly to their ACL2 equivalents when their
+arguments are boolean.
+If a boolean operator is applied to a non-boolean value, then Z3 throws an
+exception, and we regard $G$ as non-translatable.
 
-Similar arguments apply in the case that $x_i$ is an integer, rational, or real
-number. We represent ACL2 rational numbers as Z3 real numbers. Because every
-rational number is a real number, any satisfying assignment of rational numbers
-to rational variables in $\neg \Gtcp$ has a corresponding assignment for $\neg
+\subsection{Integers}\label{subsec:ints}
+Likewise, if $x_i$ is free in $\Gtcp$ and \texttt{(integerp $x_i$)} is one of
+the hypotheses of $\Gtcp$, then $\Gtcp$ holds trivially in the case that $x_i$
+doesn't satisfy \texttt{(integerp $x_i$)}. Therefore, in $\Gsmt$, \smtlink{} can
+represent the hypothesis \texttt{(integerp $x_i$)} with the declaration\\
+\rule{2em}{0ex}\texttt{x\_i = Const('x\_i', IntSort())}\\
+without excluding any satisfying assignments.
+
+Arithmetic operators and comparison operator that are supported are
+\texttt{binary-+}, \texttt{unary--}, \texttt{binary-*}, \texttt{unary-/} and
+\texttt{<}.
+These operators in the \acs{SMT} solver correspond exactly to their ACL2
+equivalents when their arguments are integers.
+As with booleans, we want to make sure that the arithmetic and comparison
+operators have equivalent semantics.
+As an example, ACL2 allows the boolean values \texttt{t} and \texttt{nil} to be
+used in arithmetic expressions -- both are treated as 0.
+Z3 also allows \texttt{True} and \texttt{False} to be used in integer
+arithmetic, with \texttt{True} treated as 1 and \texttt{False} treated as 0.
+To ensure that $\mathrm{SMT} \vdash \Gsmt \Rightarrow \mathrm{ACL2} \vdash
+\Gtcp$, our Python code checks the sorts of the arguments to arithmetic
+operators to ensure that they are integers or reals, where the interpretations
+are the same for both ACL2 and Z3.
+More specifically, we define \texttt{plus}, \texttt{negate}, \texttt{times},
+\texttt{reciprocal} and \texttt{lt} in our Python interface enforcing matching
+semantics. 
+If an arithmetic or comparison operator is applied to a non-number value except
+for a boolean value, then Z3 throws an exception, and we regard $G$ as
+non-translatable.
+
+\subsection{Rationals and Reals}\label{subsec:reals}
+Similar arguments apply in the case that $x_i$ is a rational, or real number.
+We represent ACL2 rational numbers as Z3 real numbers. Because every rational
+number is a real number, any satisfying assignment of rational numbers to
+rational variables in $\neg \Gtcp$ has a corresponding assignment for $\neg
 \Gsmt$. Thus, $\Gsmt$ is a generalization of $\Gtcp$.
 We note that for ACL2, formally proving the soundness of this generalization
 requires extending our previously discussed $M_2'$ model into a model that
 satisfies the theory of real closed
 fields~\footnote{http://smtlib.cs.uiowa.edu/theories-Reals.shtml}, because we
-are translating rationals in ACL2 to reals in Z3. We haven't wrapped our heads
-around how to do that extension in a many-sorted setting, therefore we designate
-this to be future work. As with booleans, we assume that arithmetic and
-comparison operators have equivalent semantics in ACL2 and the 
-SMT solver. In fact, we use the Python interface code to enforce this
-assumption. As an example, ACL2 allows the boolean values \texttt{t} and
-\texttt{nil} to be used in arithmetic expressions -- both are treated as 0.
-Z3 also allows \texttt{True} and \texttt{False} to be used in integer
-arithmetic, with \texttt{True} treated as 1 and \texttt{False} treated as 0.
-To ensure that $\Gsmt \Rightarrow \Gtcp$, our Python code checks the sorts of the
-arguments to arithmetic operators to ensure that they are integers or reals, where
-the interpretations are the same for both ACL2 and Z3.
+are translating rationals in ACL2 to reals in Z3. TOBEDONE
 
-When \smtlink{} is used with ACL2(r), non-classical functions are non-translatable.
-We believe that if $\neg \Gtcp$ is classical and satisfiable,
+When \smtlink{} is used with ACL2(r), non-classical functions are
+non-translatable. We believe that if $\neg \Gtcp$ is classical and satisfiable,
 then there exists a satisfying assignment to $\neg \Gtcp$ where all real-valued
-variables are bound to standard values. We believe the sketched proof in the
-beginning of Section~\ref{sec:theories} works well for ACL2(r). If we are wrong,
-we hope that one of the experts in non-standard analysis at the workshop will
-correct us.
+variables are bound to standard values. The soundness proof in the beginning of
+Section~\ref{sec:soundarg} works well for ACL2(r).
 
-\subsection{Symbols}
-A very important basic type in ACL2 is \texttt{symbolp}. We represent symbols
-using an algebraic datatype in Z3. In the z3 interface class, we define a
-\texttt{Datatype} called \texttt{z3sym}, with a single field of type
-\texttt{IntSort}. Symbol variables are defined using the datatype
+\subsection{Symbols}\label{subsec:symbols}
+We represent symbols using an algebraic datatype in Z3. In the z3 interface
+class, we define a \texttt{Datatype} called \texttt{z3sym}, with a single field
+of type \texttt{IntSort}. Symbol variables are defined using the datatype
 \texttt{z3sym}. We then define a class called \texttt{Symbol}. This class
 provides a variable \texttt{count} and a variable \texttt{dict}. It also
 provides a function called \texttt{intern} for generating a symbol constant.
@@ -178,6 +216,279 @@ The only operations that we support for symbols are comparisons for equality or
 not-equals.  We assume that these operations have corresponding semantics in
 ACL2 and the SMT solver.
 
+\section{User-defined Types}\label{sec:sounduserdefined}
+\smtlink{} supports user-defined types including products, sums, options, lists,
+alists and uninterpreted types. These types can be summarized as three main
+types -- sum types, alist types and uninterpreted types.
+Note that even though in ACL2, alist types are also sum types, it is translated
+into a different sort \texttt{ArraySort} in Z3. Therefore, we discuss alist
+types separately.
+
+Through the \smtlink{} interface, the user provides information on the given
+type, including all the functions associated with it and how to translate them.
+This is sound because \smtlink{} doesn't trust the information. It returns
+typing and algebraic properties that must be satisfied between these functions.
+If the properties cannot be validated by ACL2, then \smtlink{} will fail to
+prove $G$.
+
+\subsection{Sum Types}\label{subsec:soundsumtype}
+\smtlink{} uses the usual definition of a sum type. A sum type is composed of a 
+list of products. A product is composed of a list of fields. For each product,
+there exists a constructor and a list of destructors for each field. If the sum
+is a tagged sum, then a kind function is provided for recognizing the tag. We
+also require that an equality function must be provided for a sum type.
+
+Suppose  $x_i$ is free in $\Gtcp$ and \texttt{(sum-type-p $x_i$)} is one of
+the hypotheses of $\Gtcp$. In $\Gsmt$, \smtlink{} represents the hypothesis
+\texttt{(sum-type-p $x_i$)} with the declaration\\
+\rule{2em}{0ex}\texttt{x\_i = Const('x\_i', SumType)}\\
+where SumType is defined using Z3's algebraic datatype feature called \texttt{Datatype}. 
+
+Several problems need to be addressed before we can translate a sum type in ACL2
+into a \texttt{Datatype} in Z3. First, the constructor or destructors of a
+sum type are allowed to have the same name in ACL2 and Z3. However, ACL2 and Z3
+behaves differently when constructor or destructors can be the same based on our
+experiments. To ensure matching semantics, we check that the constructor and
+destructors don't have naming collision.
+
+Second, the Z3 \texttt{Datatype} doesn't provide a kind function for tagged
+sums. \smtlink{} will automatically generate a kind function for a given sum
+type. For example, if we have a sum type that is defined as follows:
+\begin{lstlisting}[language=LISP]
+(deftagsum tagsum-example
+  (:sum1 ((field1a type1a-p) ...))
+  (:sum2 ((field2a type2a-p) ...))
+  (:sum3 ((field3a type3a-p) ...)))
+\end{lstlisting}
+Then the corresponding kind function in Z3 is defined as:
+\begin{lstlisting}[language=Python]
+def tagsumKind(x):
+  If(x == tagsumExample.sum1(tagsumExample.field1a(x), ...),
+     Z3.Symbol('sum1'),
+     If(x == tagsumExample.sum2(tagsumExample.field2a(x), ...),
+        Z3.Symbol('sum2'),
+        ...))
+\end{lstlisting}
+
+To ensure that the sum type and its functions have the same semantics in ACL2
+and Z3, several typing and algebraic properties must be satisfied. For sum type
+$Sum$, let its constructors be $c_i$ and for each constructor, the destructors
+be $d_{ij}$. Suppose each destructor returns a type $R_{ij}$. Let the equality
+function be $\equiv_{Sum}$ and let's also suppose the kind function is $kind$ and the
+tags are $t_{i}$. Firstly, we know that the constructor and destructors must
+satisfy below typing properties.
+
+\begin{property}[Type of Constructor]
+  For all $i$, if each of the inputs $x_{ij}$ satisfy $R_{ij}$, then
+  it must be that $c_i(x_{i1}, x_{i2}, \ldots)$ satisfies $Sum$.
+\end{property}
+
+\begin{property}[Type of Destructor]
+  If $x$ is of type $Sum$, then for each destructor $d_{ij}$, it must be that
+  $d_{ij}(x)$ satisfies $R_{ij}$.
+\end{property}
+
+\noindent In addition, the constructor and destructors form below properties.
+
+\begin{property}[Equivalence of Destructor of Constructor]
+  For all $i$, if for all $j$, $x_j$ satisfies $R_{ij}$, then for all $k$,
+  $d_{ik}(c_i(x_1, x_2, \ldots))$ is $\equiv_{R_{ik}}$ to $x_k$.
+\end{property}
+
+\begin{property}[Uniqueness of Constructor of Destructors]
+  If $x$ is of type $Sum$, then there exists uniquely one $i$ such that
+  $c_i(d_{i1}(x), d_{i2}(x), \ldots)$ is $\equiv_{Sum}$ to $x$.
+\end{property}
+
+\noindent Below three properties must be satisfied for the $kind$ function.
+\begin{property}[Equivalence of Constructor of Destructors with Tag]
+  For all $i$, if $x$ is of type $Sum$ and $kind(x)$ is $t_i$, then
+  $c_i(d_{i1}(x), d_{i2}(x), \ldots)$ is $\equiv_{Sum}$ to $x$.
+\end{property}
+
+\begin{property}[Kind of Constructor]
+  For all $i$, if for all $j$, $x_j$ satisfies $R_{ij}$, then
+  $kind(c_i(d_{i1}(x), d_{i2}(x), \ldots))$ must be $\equiv_{Symbol}$ to $t_{i}$.
+\end{property}
+
+\begin{property}[Kind Uniqueness]
+  If $x$ is of type $Sum$, then there exists uniquely one $i$ such that
+  $kind(x)$ is $\equiv_{Symbol}$ to $t_i$.
+\end{property}
+
+\noindent For the equality function of a sum type, it must satisfy the three
+properties of an equivalence relationship.
+
+\begin{property}[Reflexivity of Equality]
+  If $x$ is of type $Sum$, then $x\: \equiv_{Sum}\: x$.
+\end{property}
+
+\begin{property}[Symmetricity of Equality]
+  If $x$ is of type $Sum$, $y$ is of type $Sum$ and $x\: \equiv_{Sum}\: y$, then
+  $y\: \equiv_{Sum}\: x$. 
+\end{property}
+
+\begin{property}[Transitivity of Equality]
+  If $x$ is of type $Sum$, $y$ is of type $Sum$, $z$ is of type $Sum$,
+  $x\: \equiv_{Sum}\: y$ and $y\: \equiv_{Sum}\: z$, then $x\: \equiv_{Sum}\: z$.
+\end{property}
+
+\noindent In addition, it must satisfy below two properties for a sum type:
+
+\begin{property}[Equivalence of Fields 1]
+  If $x$ is of type $Sum$, y is of type $Sum$, and $x\: \equiv_{Sum}\: y$, then
+  $kind(x)\: \equiv_{Symbol}\: kind(y)$.
+\end{property}
+
+\begin{property}[Equivalence of Fields 2]
+  If $x$ is of type $Sum$, y is of type $Sum$, and $x\: \equiv_{Sum}\: y$,
+  then for all $i$ and $j$, $d_{ij}(x)\: \equiv_{R_{ij}}\: d_{ij}(y)$.
+\end{property}
+
+In summary, if the sum type \texttt{(sum-type-p $x_i$)} and its corresponding
+functions satisfy the above properties, then we know it is sound to translate
+them into their Z3 counterparts.
+
+\subsection{Alist Types}\label{subsec:soundalisttype}
+In Chapter~\ref{ch:arch}, we know that the replacement clause-processor will
+replace alist functions with their array correspondence. This greatly simplifies
+the difficulties when translating from ACL2 alists to Z3 arrays. Instead, we can
+focus on translating from ACL2 arrays to Z3 arrays which have direct
+correspondence.
+
+Suppose  $x_i$ is free in $\Gtcp$ and \texttt{(key-val-array-p $x_i$)} is one of
+the hypotheses of $\Gtcp$. In $\Gsmt$, \smtlink{} represents the hypothesis \\
+\texttt{(key-val-array-p $x_i$)} with the declaration\\
+\rule{2em}{0ex}\texttt{x\_i = Const('x\_i', KeyValArray)}\\
+where the alist type is defined using Z3's \texttt{ArraySort} feature. There is
+a direct correspondence between the array type in ACL2 and its translation in
+Z3, therefore \smtlink{} can fulfill this translation without missing any
+satisfying assignments.
+
+Several functions over the array are supported. The constructor function \\
+\texttt{key-val-array-store} in ACL2 will be translated into \texttt{Store} in
+Z3 and the destructor function \texttt{key-val-array-select} in ACL2 will be
+translated into \texttt{Select}.
+The empty array function \texttt{key-val-array-init} will be translated into
+function \texttt{K} in Z3.
+Note that there also exists an equality function \\
+\texttt{key-val-array-equal} and a witness function
+\texttt{key-val-array-equal-witness} for array type. Like sum types, the many
+functions of an array type must satisfy typing and algebraic properties.
+
+For an array type $KeyValArray$, let's assume the select function is
+$sl$, the store function is $st$, the initialization function
+is $it$, the equality function is $\equiv_{KeyValArray}$ and the witness function
+is $w$. Let the key be of type $R_{key}$, the val be of type $R_{val}$ and let
+the default value be $MaybeKeyValCons.nil$.
+Firstly, there are two properties for the initialization function.
+\begin{property}[Type of Initialization]
+  $it()$ must return a value of type $KeyValArray$.
+\end{property}
+
+\begin{property}[Equivalence of Initialization]
+  $sl(it())\: \equiv_{Val}\: MaybeKeyValCons.nil$
+\end{property}
+
+\noindent Secondly, for the select function, three properties must be satisfied.
+\begin{property}[Type of Select]
+  If $a$ is of type $KeyValArray$, $sl(a)$ must be of type $R_{val}$.
+\end{property}
+
+\begin{property}[Select of Equal]
+  If $a$ is of type $KeyValArray$, $i$ is of type $R_{Key}$ and $v$ is of type
+  $R_{Val}$, then $sl(st(a, i, v), i)\: \equiv_{R_{Val}}\: v$.
+\end{property}
+
+\begin{property}[Select of Distinct]
+  If $a$ is of type $KeyValArray$, $i$ is of type $R_{Key}$, $j$ is of type
+  $R_{Key}$, $v$ is of type $R_{Val}$, and $i\: \not\equiv_{R_{Key}}\: j$, then
+  $sl(st(a, i, v), j)\: \equiv_{R_{Val}}\: sl(a, j)$.
+\end{property}
+
+\noindent The store function must also satisfy its typing property.
+\begin{property}[Type of Store]
+  If $k$ is of type $R_{Key}$, $v$ is of type $R_{Val}$ and $a$ is of type
+  $KeyValArray$, then $st(a, k, v)$ must be of type $KeyValArray$.
+\end{property}
+
+\noindent Similar to the equality for sum types, for array's equality function,
+it first needs to be an equivalence relation. Furthermore, two additional
+properties need to be satisfied.
+\begin{property}[Array Equal Implies Select Equal]
+  If $a_1$ is of type $KeyValArray$, $a_2$ is of type $KeyValArray$, $k$ is of
+  type $R_{Key}$, and $a_1\: \equiv_{KeyValArray}\: a_2$, then
+  $sl(a_1,k)\: \equiv_{R_{Key}}\: sl(a_2,k)$.
+\end{property}
+
+\begin{property}[Select Of Witness Equal Implies Array Equal]
+  If $a_1$ is of type $KeyValArray$, $a_2$ is of type $KeyValArray$, then
+  $a_1\: \equiv_{KeyValArray}\: a_2$ if and only if
+  $sl(a_1, w(a_1, a_2))\: \equiv_{R_{Val}}\: sl(a_2, w(a_1, a_2))$.
+\end{property}
+
+\noindent Note that the two properties together is equivalent to:
+\begin{property}[Equal of Array]
+  If $a_1$ is of type $KeyValArray$, $a_2$ is of type $KeyValArray$, then
+  for all $k$ of type $R_{Key}$, $a_1\: \equiv_{KeyValArray}\: a_2$ if and only
+  if $sl(a_1, k)\: \equiv_{R_{Val}}\: sl(a_2, k)$.
+\end{property}
+
+\subsection{Uninterpreted Types}\label{subsec:soundunintertype}
+Suppose  $x_i$ is free in $\Gtcp$ and \\
+\texttt{(uninterpreted-p $x_i$)} is one of
+the hypotheses of $\Gtcp$. In $\Gsmt$, \smtlink{} represents the hypothesis
+\texttt{(uninterpreted-p $x_i$)} with the declaration\\
+\rule{2em}{0ex}\texttt{x\_i = Const('x\_i', Uninterpreted)}\\
+where the uninterpreted type is defined using Z3's \texttt{DeclareSort} feature.
+There is a direct correspondence between the array type in ACL2 and its
+translation in Z3, therefore \smtlink{} can fulfill this translation without
+missing any satisfying assignments.
+
+Only equality function is supported for terms of the same uninterpreted type.
+The equality function must satisfy equivalence relationship properties.
+
+\section{Uninterpreted Functions}\label{sec:sounduninterfun}
+The user can direct \smtlink{} to represent some functions as uninterpreted functions
+in the SMT theories.  Let \texttt{(f arg1 arg2 \ldots argk)} be a function instance
+in $\Gtcp$.  \smtlink translates this to\\
+\rule{2em}{0ex}\texttt{f\_smt(arg\_smt1, arg\_smt2, \ldots, arg\_smtk)}\\
+The constraints for \texttt{f\_smt} are the types of the argument, the type of the
+result, and any user-specified constraints.
+If the function instance in $\Gtcp$ violates the argument type constraints, then
+the term is untranslatable -- currently, \smtlink{} produces an SMT term
+that provokes a \texttt{z3types.Z3exception}.
+For each function instance in $\Gtcp$ that is translated to an uninterpreted function,
+\smtlink{} produces a proof obligation for ACL2 that the function instances in
+$\Gtcp$ satisfy the given type-recognizers.  Likewise, if the user specified
+any other constraints for this function, they are returned as further ACL2 proof
+obligations.
+Under these preconditions, any value that can be produced by \texttt{f} satisfies the
+constraints for \texttt{f\_smt}.
+Thus, we maintain correspondence of values for terms in $\Gtcp$ and $\Gsmt$.
+
+\section{Soundness Wrap-Up}\label{sec:soundconcl}
+Terms in SMT solvers such as Z3 are typed.  \smtlink{} support booleans, integers,
+reals and rationals, symbols, product types, lists, alists, option types, sum
+types, and uninterpreted types.  For each of these, we have shown that for all
+operations supported for each class of types, terms in $\Gsmt$ can have the
+values corresponding to those of $\Gtcp$. 
+More generally, $\Gsmt$ can be a generalization of $\Gtcp$ by allowing terms of
+$\Gsmt$ to have values that the corresponding terms of $\Gtcp$ cannot.
+In cases where ACL2 and Z3 interpretations of terms could diverge, the
+trusted clause processor generates properties that are verified by ACL2 to
+ensure that the functions in question are only applied to terms for which their
+ACL2 and Z3 behaviors coincide.
+The key to soundness is that if there exists a valuation of the free variables
+of $\Gtcp$ such that $\Gtcp$ is false, then there is a corresponding valuation
+of the free variables of $\Gsmt$ such that $\Gsmt$ is false.  Thus, if there
+is a counter-example for $\Gtcp$, then $\neg\Gsmt$ is satisfiable.  We trust
+the SMT solver to find a satisfying assignment to $\Gtcp$ if one exists (or
+report ``unknown'').  Thus, if the SMT solver reports ``unsat'', we conclude
+that $\neg\Gsmt$ is unsatisfiable; therefore, $\neg\Gtcp$ is unsatisfiable, and
+the original goal is indeed a theorem.
+
+\endinput
 
 \subsection{FTY types}
 We have added support for common \texttt{fty} types that enable \smtlink{} to
@@ -343,24 +654,6 @@ the ACL2 value.  \texttt{nil} is trivially the same. Thus, the \smtlink{}
 translation maintains equivalence of values of terms for constructors and field
 accessors of option types.
 
-\subsection{Uninterpreted Functions}
-The user can direct \smtlink{} to represent some functions as uninterpreted functions
-in the SMT theories.  Let \texttt{(f arg1 arg2 \ldots argk)} be a function instance
-in $\Gtcp$.  \smtlink translates this to\\
-\rule{2em}{0ex}\texttt{f\_smt(arg\_smt1, arg\_smt2, \ldots, arg\_smtk)}\\
-The constraints for \texttt{f\_smt} are the types of the argument, the type of the
-result, and any user-specified constraints.
-If the function instance in $\Gtcp$ violates the argument type constraints, then
-the term is untranslatable -- currently, \smtlink{} produces an SMT term
-that provokes a \texttt{z3types.Z3exception}.
-For each function instance in $\Gtcp$ that is translated to an uninterpreted function,
-\smtlink{} produces a proof obligation for ACL2 that the function instances in
-$\Gtcp$ satisfy the given type-recognizers.  Likewise, if the user specified
-any other constraints for this function, they are returned as further ACL2 proof
-obligations.
-Under these preconditions, any value that can be produced by \texttt{f} satisfies the
-constraints for \texttt{f\_smt}.
-Thus, we maintain correspondence of values for terms in $\Gtcp$ and $\Gsmt$.
 
 % \subsection{Soundness Wrap-Up}
 % Terms in SMT solvers such as Z3 are typed.  \smtlink{} support booleans, integers,

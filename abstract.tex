@@ -4,7 +4,7 @@
 \chapter{Abstract}
 %% 345 words
 
-SMT solvers are automated decision procedures for domain-specific solving
+\ac{SMT} solvers are automated decision procedures for domain-specific solving
 problems including but not limited to boolean, integer, and real theories,
 uninterpreted function theories, array theories, and bit-vector theories.
 They have become a main method widely applied in the industry for solving
@@ -16,23 +16,25 @@ Any moderate-complexity problem will require both methods but switching between
 tools requires modelling the same system in each tool.
 This introduces huge verification overhead and could be erroneous.
 
-Existing work on the integration of SMT solvers and theorem provers focuses on
-proof reconstruction for soundness, but lacks emphasis on the usability and
-proof efficiency.
+Existing work on the integration of \acs{SMT} solvers and theorem provers
+focuses on proof reconstruction for soundness, but lacks emphasis on the
+usability and proof efficiency.
 To use such integration, the theorem prover term needs to be in a form that is
 ready for direct translation.
 On the other hand, since proof reconstruction is hard, it is reported that for
 some problems the lemma could be time consuming and even unsolvable.
 In this thesis, We stress the problem of the usability of such integration.
-We propose using reflection for integrating SMT solvers into theorem provers.
+We propose using reflection for integrating \acs{SMT} solvers into theorem
+provers. 
 We note that using proof reconstruction to remove the dependency on the
-soundness of the SMT solver is an orthogonal research direction.
+soundness of the \acs{SMT} solver is an orthogonal research direction.
 
-We demonstrate our method using the ACL2 theorem prover and the Z3 SMT solver.
+We demonstrate our method using the ACL2 theorem prover and the Z3
+\acs{SMT} solver.
 To bridge the gap between the untyped first-order logic of ACL2 and the
-many-sorted logic of SMT solvers, we apply reflection over the ACL2 terms to
-achieve adding user hypotheses, function expansion, type inference, term
-replacement and many other transformations.
+many-sorted logic of \acs{SMT} solvers, we apply reflection over the ACL2
+terms to achieve adding user hypotheses, function expansion, type inference,
+term replacement and many other transformations.
 By using reflection, the user is freed from manually transforming theorem prover
 terms into a shape that is directly translatable.
 In addition, soundness of these transformations is easily achieved and does not

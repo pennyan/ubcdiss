@@ -1,8 +1,9 @@
           NAME1 = diss
        PRODUCT1 = $(NAME1).pdf
      TEXSOURCE1 = $(NAME1).tex \
-		    abstract.tex ack.tex glossary.tex intro.tex laysummary.tex \
-		    ubcdiss.cls
+		    abstract.tex ack.tex appendix.tex arch.tex comparison.tex conclusion.tex \
+        glossary.tex intro.tex laysummary.tex macros.tex ml.tex pipeline.tex \
+        preface.tex relatedwork.tex soundness.tex ubcdiss.cls
            BBL1 = $(NAME1).bbl
 
 #         NAME2 =

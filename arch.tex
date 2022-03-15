@@ -1,3 +1,18 @@
-\chapter{Architecture of Smtlink}
+\chapter{The Reflection-based Integration Architecture}
 \label{ch:arch}
+
+% There doesn't exist a direct correspondence of the alist type in Z3. One of the
+% idea is to use \texttt{ArraySort} to represent alists. However, there are
+% several difficulties.
+% First, ACL2 alists can be empty but Z3 arrays are infinite. We solve this
+% problem by using constant arrays initialized with \texttt{nil} constants to
+% represent empty alists.
+% Second, the destructor function \texttt{assoc-equal} doesn't correspond directly
+% to Z3's \texttt{Select} function. More specifically, \texttt{assoc-equal}
+% produces a cons-pair, while \texttt{Select} produces a value.
+% To solve these problems, for each alist type, we provide a corresponding array
+% definition in ACL2.
+% As is described in Chapter~\ref{ch:arch}, the replacement clause-processor
+% replaces uses of alist recognizers, empty alists, \texttt{acons},
+% \texttt{assoc-equal} and \texttt{cdr} with their corresponding array functions.
 

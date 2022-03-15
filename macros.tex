@@ -62,9 +62,6 @@
 % My commands
 
 \newcommand{\smtlink}{\texttt{Smtlink}\xspace}
-\newcommand{\zthree}{\texttt{Z3}\xspace}
-\newcommand{\acltwo}{\texttt{ACL2}\xspace}
-\newcommand{\python}{\texttt{Python}\xspace}
 \newcommand{\Gtcp}{\ensuremath{G_{\mathrm{tcp}}}}
 \newcommand{\Gsmt}{\ensuremath{G_{\mathrm{smt}}}}
 \newcommand{\Hsmt}[1]{\ensuremath{H_{\mathrm{smt,#1}}}}
@@ -76,6 +73,11 @@
 \newtheorem{corollary}{Corollary}[theorem]
 \newtheorem{lemma}[theorem]{Lemma}
 \newtheorem{definition}{Definition}[section]
+\newtheorem{assumption}{Assumption}[section]
+
+\newtheoremstyle{named}{}{}{\itshape}{}{\bfseries}{.}{.5em}{#1 #2 (\emph{#3})}
+\theoremstyle{named}
+\newtheorem{property}{Property}[section]
 
 \newcommand*\Yan{\textcolor{YanFavoriteColor}}
 \newcommand*\Mark{\textcolor{MarkFavoriteColor}}

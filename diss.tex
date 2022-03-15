@@ -109,44 +109,6 @@
 %% in excellent journals.  Ignore the examples in the Lamport book!
 \usepackage{booktabs}
 
-%% listings: useful support for including source code listings, with
-%% optional special keyword formatting.  The \lstset{} causes
-%% the text to be typeset in a smaller sans serif font, with
-%% proportional spacing.
-\usepackage{listings}
-% \lstset{basicstyle=\sffamily\scriptsize,showstringspaces=false,fontadjust}
-\lstdefinestyle{progstyle}{
-  aboveskip=3mm,
-  belowskip=3mm,
-  showstringspaces=false,
-  columns=flexible,
-  basicstyle={\small\ttfamily},
-  numbers=left,
-  numbersep=5pt,
-  numberstyle=\tiny\color{gray},
-  keywordstyle=\color{blue},
-  commentstyle=\color{dkgreen},
-  stringstyle=\color{mauve},
-  breaklines=true,
-  breakatwhitespace=true,
-  tabsize=3,
-  keepspaces=true
-}
-
-\lstdefinestyle{snippet}{
-  belowskip=0.5\baselineskip,
-  basicstyle={\footnotesize\ttfamily},
-  numbers=none,
-  keywordstyle=\color{blue},
-  commentstyle=\color{dkgreen},
-  stringstyle=\color{mauve},
-  showlines=true
-}
-
-\lstset{style=progstyle}
-% \floatstyle{ruled}
-% \newfloat{Program}{htbp}{lop}[section]
-
 %% The acronym package provides support for defining acronyms, providing
 %% their expansion when first used, and building glossaries.  See the
 %% example in glossary.tex and the example usage throughout the example
@@ -172,8 +134,36 @@
 \definecolor{dkgreen}{rgb}{0,0.6,0}
 \definecolor{gray}{rgb}{0.5,0.5,0.5}
 \definecolor{mauve}{rgb}{0.58,0,0.82}
+\definecolor{purple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
 \definecolor{YanFavoriteColor}{rgb}{0.0,0.7,0.7}
 \definecolor{MarkFavoriteColor}{rgb}{0.0,0.7,0.0}
+
+%% listings: useful support for including source code listings, with
+%% optional special keyword formatting.  The \lstset{} causes
+%% the text to be typeset in a smaller sans serif font, with
+%% proportional spacing.
+\usepackage{listings}
+% \lstset{basicstyle=\sffamily\scriptsize,showstringspaces=false,fontadjust}
+\lstdefinestyle{codestyle}{
+  backgroundcolor=\color{white},
+  commentstyle=\color{dkgreen},
+  keywordstyle=\color{magenta},
+  numberstyle=\tiny\color{gray},
+  stringstyle=\color{purple},
+  basicstyle=\ttfamily\footnotesize,
+  breakatwhitespace=false,
+  breaklines=true,
+  captionpos=b,
+  keepspaces=true,
+  showspaces=false,
+  showstringspaces=false,
+  showtabs=false,
+  tabsize=2
+}
+
+\lstset{style=codestyle}
 
 %% comment: provides a new {comment} environment: all text inside the
 %% environment is ignored.
@@ -338,6 +328,7 @@
 %% Other packages
 \usepackage{proof} % for newtheorem
 \usepackage{xspace} % for xspace
+\usepackage{amsthm} % for named theorem style
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -490,7 +481,19 @@
 %    Generally recommended to put each chapter into a separate file
 \include{relatedwork}
 \include{arch}
+% arch , hint structure
+% rule-based clause transformation, rule-driven compiler
 \include{soundness}
+% soundness is about trusted clause-processors
+% suppose all free vars are properly-typed (this is the definition of
+% translatable)
+
+% primitive functions work as expected
+% user defined functions, types -- axiomize: generates proof obligations
+% equality
+% how to handle that the ACL2 model might be non-standard?
+% real numbers?
+
 \include{pipeline}
 \include{ml}
 \include{comparison}
