@@ -79,8 +79,9 @@
 \theoremstyle{named}
 \newtheorem{property}{Property}[section]
 
-\newcommand*\Yan{\textcolor{YanFavoriteColor}}
-\newcommand*\Mark{\textcolor{MarkFavoriteColor}}
+\newcommand\Yan[1]{\textcolor{YanFavoriteColor}{[Yan: #1]}}
+\newcommand\Mark[1]{\textcolor{MarkFavoriteColor}{[Mark: #1]}}
+\newcommand\Matt[1]{\textcolor{MattFavoriteColor}{[Matt: #1]}}
 
 % \codelinelen, length for a one-line snippet of code (if we need to shrink it)
 % If I knew the way to calculate the minimum of two lengths, I'd use it here.
