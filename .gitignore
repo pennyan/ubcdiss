@@ -17,5 +17,7 @@
 *.dblite
 *~
 auto/*
+figs/*.fig.bak
 diss.pdf
 doc.pdf
+diss.tar
