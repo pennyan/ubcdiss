@@ -8,24 +8,26 @@
 
 #         NAME2 =
 #      PRODUCT2 = $(NAME2).pdf
-#    TEXSOURCE2 = $(NAME2).tex 
+#    TEXSOURCE2 = $(NAME2).tex
 #          BBL2 = $(NAME2).bbl
 
       BIBINPUTS = biblio.bib
 
      PDFFIGURES = $(BUILTPDFFIGURES) ${PNGFIGURES}
-     PNGFIGURES = 
-     GIFFIGURES = 
-     SVGFIGURES = 
+     PNGFIGURES =
+     GIFFIGURES =
+     SVGFIGURES =
 # Following is for Berkeley Make syntax:
-#BUILTPDFFIGURES = \
+# BUILTPDFFIGURES = \
 #		    ${PNGFIGURES:C/\.png/.pdf/g} \
 #		    ${GIFFIGURES:C/\.gif/.pdf/g} \
 #		    ${SVGFIGURES:C/\.svg/.pdf/g}
 
+     XFIGFIGURES = figs/arch.pdf_t
+
 all: doc.pdf $(PRODUCT1)
 
-$(NAME1).pdf: $(TEXSOURCE1) $(BBL1) $(PDFFIGURES)
+$(NAME1).pdf: $(TEXSOURCE1) $(BBL1) $(PDFFIGURES) $(XFIGFIGURES)
 $(NAME1).dvi: $(TEXSOURCE1) $(BBL1) $(EPSFIGURES)
 $(NAME1).bbl: $(TEXSOURCE1) $(BIBINPUTS) $(PDFFIGURES)
 
