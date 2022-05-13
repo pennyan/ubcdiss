@@ -147,6 +147,7 @@
 %% the text to be typeset in a smaller sans serif font, with
 %% proportional spacing.
 \usepackage{listings}
+\usepackage{float}
 % \lstset{basicstyle=\sffamily\scriptsize,showstringspaces=false,fontadjust}
 \lstdefinestyle{codestyle}{
   backgroundcolor=\color{white},
@@ -166,6 +167,8 @@
 }
 
 \lstset{style=codestyle}
+\floatstyle{ruled}
+\newfloat{program}{htbp}{lop}[section]
 
 %% comment: provides a new {comment} environment: all text inside the
 %% environment is ignored.
@@ -332,6 +335,14 @@
 \usepackage{xspace} % for xspace
 \usepackage{amsthm} % for named theorem style
 \usepackage{amsmath}
+% for algorithms
+\usepackage[linesnumbered,ruled,vlined,noend]{algorithm2e}
+\newcommand\commfont[1]{\textcolor{blue}{#1}}
+\SetCommentSty{commfont}
+\SetKwInput{KwInput}{Input}
+\SetKwInput{KwOutput}{Output}
+\SetKwProg{Fn}{Function}{:}{}
+\SetKw{in}{in}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

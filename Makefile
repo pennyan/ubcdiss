@@ -25,9 +25,15 @@
 
      XFIGFIGURES = figs/arch.pdf_t
 
+	   PROGFILES = progs/hint-top.lisp progs/poly.lisp progs/hint-function.lisp \
+	               progs/hint-thm-spec.lisp progs/hint-hypotheses.lisp \
+	               progs/hint-acl2types.lisp progs/hint-datatypes.lisp \
+	               progs/hint-replaces.lisp progs/hint-sum.lisp \
+	               progs/hint-array.lisp progs/hint-abstract.lisp
+
 all: doc.pdf $(PRODUCT1)
 
-$(NAME1).pdf: $(TEXSOURCE1) $(BBL1) $(PDFFIGURES) $(XFIGFIGURES)
+$(NAME1).pdf: $(TEXSOURCE1) $(BBL1) $(PDFFIGURES) $(XFIGFIGURES) $(PROGFILES)
 $(NAME1).dvi: $(TEXSOURCE1) $(BBL1) $(EPSFIGURES)
 $(NAME1).bbl: $(TEXSOURCE1) $(BIBINPUTS) $(PDFFIGURES)
 
