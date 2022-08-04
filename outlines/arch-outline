@@ -1,0 +1,52 @@
+Thesis statement: Metaprogramming and reflection provide a logically sound way
+to transform high-level proof goals in an interactive theorem prover into goals
+that can be proven automatically by an SMT solver.
+
+Chapter summary: The architecture of Smtlink is built upon the reasoning
+framework provided by metaprogramming and reflection. This architecture is
+composed of a pipeline of verified clause processors leading to a final trusted
+clause processor that provides the low-level interface to the SMT solver.
+
+1. Overview:
+Metaprogramming and reflection refers to the technique of being able to take a
+term in a programming language as data, examine and manipulate the term in the
+same language. ACL2 is a dialect of Lisp, which makes it very easy to apply this
+technique.
+
+What's different from other reflective programming is that, in addition to
+manipulating the term, ACL2 also provides a way of proving that the resulting
+term maintains the logical meaning of the original term, therefore ensures
+soundness.
+
+This is done via the meta-extract mechanism. Meta-extract allows us to use
+established rules in ACL2 and use them to guide the transformation of an ACL2
+theorem term.
+
+The architecture of Smtlink is largely based on this mechanism. For example,
+type inference uses rules about types for guiding the inference of types of
+sub-terms of an ACL2 term.
+
+2. Background:
+This chapter describes: verified and trusted clause-processors, computed-hints,
+evaluators, and Meta-extract.
+
+3. Overview of the architecture:
+This chapter is an overview of the whole Smtlink architecture. Show a graph of
+the architecture of Smtlink and give one or more examples to explain what each
+stage does. This chapter should be example-guided.
+
+4. Description of the verified clause-processors:
+This chapter gives detailed description of each verified clause-processor. The
+description is not example-guided, but provides more technical details.
+
+a. What transformation is performed?
+b. Why is the transformation needed?
+c. What hint is provided for this clause-processor?  -- The user configures
+Smtlink through user-provided hints, and each of these hints guide each stage in
+these transformations.
+d. How did metaprogramming and meta-extract enable implementing the
+clause-processor?
+
+(Mark, I think the description of the trusted clause-processor should be in
+Soundness chapter, but it also seems plausible to put it in architecture. Let me
+know what you think.)
