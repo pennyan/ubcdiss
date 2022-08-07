@@ -149,10 +149,11 @@
 \usepackage{listings}
 \usepackage{float}
 % \lstset{basicstyle=\sffamily\scriptsize,showstringspaces=false,fontadjust}
-\lstdefinestyle{codestyle}{
+\lstdefinestyle{lisp}{
+  language=Lisp,
   backgroundcolor=\color{white},
   commentstyle=\color{dkgreen},
-  keywordstyle=\color{magenta},
+  keywordstyle=\color{blue},
   numberstyle=\tiny\color{gray},
   stringstyle=\color{purple},
   basicstyle=\ttfamily\footnotesize,
@@ -163,10 +164,10 @@
   showspaces=false,
   showstringspaces=false,
   showtabs=false,
-  tabsize=2
+  tabsize=2,
+  morekeywords={defthm, implies}
 }
 
-\lstset{style=codestyle}
 \floatstyle{ruled}
 \newfloat{program}{htbp}{lop}[section]
 
@@ -386,7 +387,7 @@
 \faculty{The Faculty of Graduate Studies}
 \department{Computer Science}
 \submissionmonth{April}
-\submissionyear{2192}
+\submissionyear{2023}
 
 % details of your examining committee
 \examiningcommittee{Mark R. Greenstreet, Department of Computer Science,

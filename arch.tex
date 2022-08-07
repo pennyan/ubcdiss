@@ -1,53 +1,1334 @@
+\chapter{Smtlink Architecture}
+\label{ch:smtlink}
+
+\Yan{The introduction to this Chapter should be an expanded version of
+the following paragraph. I need to identify which parts require expanding out.}
+Smtlink connects the ACL2 interactive theorem prover with an SMT solver using
+meta-programming and reflection. The architecture is a pipeline of rule-based
+transformers that compiles a term in the untyped first order logic of ACL2 to
+the many-sorted first order logic of SMT. Each transformation is guided by
+theorems established in ACL2. The final step is a direct translation from ACL2
+formulas to their SMT counterparts. Properties over the SMT sorts and their
+associated functions are returned back to ACL2 for establishing the soundness of
+the last step. This makes the soundness argument straightforward.
+
+\section{Technical Challenges}
+\label{sec:challenges}
+The many differences between the ACL2 theorem prover and an SMT solver like Z3
+proposes many challenges for integrating SMT solvers into the ACL2 theorem
+prover. The foremost difference is that the logic of the ACL2 theorem prover is untyped,
+while the logic of the SMT solvers is many-sorted. Though an observation is that
+ACL2 users tend to have types in mind when defining theorems. This motivated us
+to transform untyped ACL2 terms into typed terms.
+
+Another difficulty that comes along with ACL2's untyped logic is that there are
+heavy uses of polymorphic functions, for example, \texttt{car}, \texttt{cdr}
+and \texttt{cons}. However the many-sorted logic of Z3 requires that functions
+or values are associated with a given sort.
+For example, in ACL2 one can write \texttt{(cons 1 nil)} where \texttt{cons}
+is polymorphic, but in Z3, one needs to write \texttt{IntegerList.cons(1,
+  IntegerList.nil)} where \texttt{IntegerList.cons} is a constructor function
+for the sort \texttt{IntegerList} and \texttt{IntegerList.nil} is a nullary
+constructor for the values of sort \texttt{IntegerList}.
+Furthermore, there are commonly used ACL2 features that do not have direct
+correspondence in an SMT solver. For example, alist types and its operations.
+
+Last but not least, there exists intricate differences between the two languages.
+For example, adding a number with a boolean value in ACL2 is equivalent to
+adding a number to the value 0, so \texttt{(+ 1 t)} evaluates to $1$.
+However, the Z3 Python bindings in Z3py overload $+$ so that \texttt{1+True}
+evaluates to $2$. Another example is when taking \texttt{car} of an empty list.
+In ACL2, \texttt{(car nil)} evaluates to \texttt{nil} while in Z3,
+\texttt{IntegerList.car(IntegerList.nil)} returns an arbitrary value of sort
+\texttt{IntSort()}.
+
+These challenges mean that a naive translation from the ACL2 Lisp language to
+the Z3 SMT language can often be wrong and lead to soundness issues. Therefore,
+it is crucial to come up with a general solution to address these issues.
+\subsection{Untyped vs Many-sorted}
+\Yan{This subsection needs to be expanded out.}
+Problem: The ACL2 theorem prover is untyped but Z3 is many-sorted.
+
+Solution: Perform type inference over ACL2 terms.
+
+\subsection{Connecting ACL2 types with Z3 types}
+\Yan{This subsection needs to be expanded out. State that ACL2 types are more expressive
+  than SMT types. Therefore we choose to represent SMT types in ACL2. }
+Problem: Through type-inference, we get an ACL2 term that is typed with respect
+to ACL2 types. Sometimes, they have direct correspondence with SMT (e.g. Bool
+and Integer), sometimes they don't (e.g. (car nil) and association lists).
+
+Solution: Term transformation that transforms a term using ACL2 type (e.g.
+alist-p) or functions (e.g. car) to a term using ACL2-embedded SMT types (e.g.
+Array-p) or functions (e.g. integer-list-car).
+
+\subsection{Soundness}
+\Yan{This subsection needs to be expanded out. Add a footnote that we are
+  assuming soundness of the SMT solver and ACL2.}
+Problem: How do we know the final transliteration is sound?
+
+Solution: Prove that the ACL2-embedded SMT type satisfy the theory of the
+corresponding SMT sorts. 
+
+\section{Meta-programming and Reflection in ACL2}
+\label{sec:meta}
+
+Reflection allows us to reason about certain parts of a logical system within
+the logical system itself. This generally require a metalogic built into the
+logical system. Such a metalogic can be achieved through higher-order logic in a
+higher-order logic theorem prover~\cite{harrison1995}.
+The ACL2 theorem prover is first-order. In order to provide reflection, it
+provides the user with several key features that enables
+meta reasoning~\cite{boyer1979, hunt2005, kaufmann2017}.
+
+On the high-level, ACL2 provides clause-processors for user-defined
+transformation or simplification of terms.
+A correctness theorem must be established to install a verified clause-processor
+into the ACL2 system. The correctness theorem ensures that the simplifications
+applied to the input clause are sound.
+A pseudo-evaluator must be defined for evaluating the functions applied in the
+clause-processor. ACL2 also provides reflection for allowing the
+clause-processor to consult the logical world for established facts. They can be
+used for guiding the transformation or simplification done in a
+clause-processor. In addition, hint wrappers and computed-hints are used for
+connecting several clause-processors together.
+
+\Yan{Need to define pseudo-term and introduce ACL2 hint}
+
+\subsection{Clause Processors}\label{subsec:cp}
+In ACL2, a proof goal is represented as a clause. A clause is a disjunction of
+terms. A clause-processor~\cite{clause-processor} takes a proof goal as input
+and produces a list of proof goals. Given that the conjunction of the list of
+output proof goals are proved, the original proof goal will be established.
+
+For a verified clause-processor, it is ensured that the conjunction of output
+proof goals implies the input proof goal. This is done through establishing
+the following correctness theorem.
+
+\begin{lstlisting}[style=lisp, label={prog:cp1}, caption={Correctness theorem of
+  a user defined clause-proecssor}]
+  (defthm correctness-of-a-user-defined-clause-processor-1
+    (implies (and (pseudo-term-listp cl)
+                  (alistp a)
+                  (eval (conjoin-clauses
+                          (clauses-result
+                            (user-defined-clause-processor cl term state)))
+                        a))
+             (eval (disjoin cl) a))
+    :rule-classes :clause-processor)
+\end{lstlisting}
+
+This theorem states that given a list of pseudo-terms \texttt{cl} that
+represents the disjunction of terms in the proof goal, an alist \texttt{a} that
+represents the environment in which the term will be evaluated with respect to,
+if the conjunction of clauses output by the user-defined clause-processor
+\texttt{user-defined-clause-processor} evaluated in environment \texttt{a} leads
+to true, then the original clause \texttt{cl} evaluated in the same environment
+must also lead to true. A proof for the correctness theorem often involves an
+induction proof over the structure of the input pseudo-term type.
+
+ACL2 also provides a trusted clause-processor feature. When using a trusted
+clause-processor, one doesn't need to prove the above correctness theorem. In
+contrast to a verified clause-processor, a trusted clause-processor extends the
+ACL2 logical system with the axiom that the trusted clause-processor is sound.
+ACL2 asks one to provide a trust tag~\cite{defttag} to acknowledge such an
+extension.
+
+\subsection{Pseudo-evaluator}
+Since ACL2 is first-order logic, it is not possible to have a complete evaluator
+because a complete evaluator uses second-order logic. In particular,
+one cannot write an evaluator \texttt{eval} that can evaluator a function
+\texttt{f} that is going to be defined. However, we can imagine writing a
+constrained function that can evaluate terms using a subset of defined
+functions. This evaluator treats each function as a single case and evaluates
+them separately. In addition, it checks if such a function already exist. This
+is called a pseudo-evaluator. 
+
+Note that the correctness theorem shown in Section~\ref{subsec:cp} uses a
+pseudo-evaluator called \texttt{eval}. A pseudo-evaluator is a constrained
+function, with constraints (expressed as ACL2 theorems) for the evaluation of
+variables, quoted constants, lambda-expressions, and a specified set of
+functions.  The value produced by the pseudo-evaluator for the evaluation of any
+function outside of that set is unconstrained.  The actual evaluation of an ACL2
+term satisfies all of the constraints of the pseudo-evaluator. Therefore, if one
+can establish that the correctness theorem holds using the pseudo-evaluator,
+then one can infer that the correctness theorem holds for a full evaluator,
+since all constraint theorems proved over a pseudo-evaluator are true theorems
+in a full evaluator as well~\cite{kaufmann2017}. To see this, take the following
+pseudo-evaluator as an example:
+
+\begin{lstlisting}[style=lisp]
+  (defevaluator demo-ev demo-ev-list
+    ((if x y z) (equal x y)) :namedp t)
+\end{lstlisting}
+
+The above form defines an evaluator called \texttt{demo-ev}. The
+\texttt{demo-ev} and \texttt{demo-ev-list} form a mutual recursion of evaluators
+that work on a \texttt{pseudo-termp} and a \texttt{pseudo-term-listp}
+respectively. In this pseudo-evaluator, we specify that it should know about the
+evaluation constraints for \texttt{if} and \texttt{equal}. Together, ten
+constraints are proved.
+The first eight constraints are common constraints that are defined for all
+pseudo-terms. They define the evaluation rules for evaluating a pseudo-term. The
+last two rules, \texttt{demo-ev-of-if-call} and \texttt{demo-ev-of-equal-call}
+are evaluation rules for \texttt{if} and \texttt{equal}.
+
+\begin{lstlisting}[style=lisp]
+(defthmd demo-ev-of-fncall-args
+  (implies (and (consp x)
+                (syntaxp (not (equal a ''nil)))
+                (not (equal (car x) 'quote)))
+           (equal (demo-ev x a)
+                  (demo-ev (cons (car x)
+                                 (kwote-lst (demo-ev-list (cdr x) a)))
+                           nil))))
+(defthm demo-ev-of-variable
+  (implies (symbolp x)
+           (equal (demo-ev x a)
+                  (and x (cdr (assoc-equal x a))))))
+(defthm demo-ev-of-quote
+  (implies (and (consp x) (equal (car x) 'quote))
+           (equal (demo-ev x a) (cadr x))))
+(defthm demo-ev-of-lambda
+  (implies (and (consp x) (consp (car x)))
+           (equal (demo-ev x a)
+                  (demo-ev (caddr (car x))
+                           (pairlis$ (cadr (car x))
+                                     (demo-ev-list (cdr x) a))))))
+(defthm demo-ev-list-of-atom
+  (implies (not (consp x-lst))
+           (equal (demo-ev-list x-lst a) nil)))
+(defthm demo-ev-list-of-cons
+  (implies (consp x-lst)
+           (equal (demo-ev-list x-lst a)
+                  (cons (demo-ev (car x-lst) a)
+                        (demo-ev-list (cdr x-lst) a)))))
+(defthmd demo-ev-of-nonsymbol-atom
+  (implies (and (not (consp x)) (not (symbolp x)))
+           (equal (demo-ev x a) nil)))
+(defthmd demo-ev-of-bad-fncall
+  (implies (and (consp x)
+                (not (consp (car x)))
+                (not (symbolp (car x))))
+           (equal (demo-ev x a) nil)))
+(defthm demo-ev-of-if-call
+  (implies (and (consp x) (equal (car x) 'if))
+           (equal (demo-ev x a)
+                  (if (demo-ev (cadr x) a)
+                      (demo-ev (caddr x) a)
+                    (demo-ev (cadddr x) a)))))
+(defthm demo-ev-of-equal-call
+  (implies (and (consp x) (equal (car x) 'equal))
+           (equal (demo-ev x a)
+                  (equal (demo-ev (cadr x) a)
+                         (demo-ev (caddr x) a)))))
+\end{lstlisting}
+
+\texttt{demo-ev-of-if-call} says that if \texttt{x} is a pseudo-term of an
+\texttt{if} call, evaluating \texttt{x} with respect to the environment
+\texttt{a} is equivalent to evaluating the ``condition'', ``then'' and ``else''
+branches seperately and then form an ``if'' after the evaluations.
+Similarly for \texttt{demo-ev-of-equal-call}, evaluating an ``equal'' term is
+the same as evaluating the two sides and then test for equality.
+The above constraints are the only facts ACL2 knows about \texttt{demo-ev} and
+\texttt{demo-ev-list}. When evaluating a transformation in a clause-processor,
+if the transformation goes beyond the set of constraints, one cannot prove
+soundness of the reflection. On the other hand, if these constraints are enough
+for establishing soundness of a clause-processor, then we know the soundness of
+such a clause-processor also holds in a full evaluator.
+
+Note that \texttt{demo-ev-of-if-call} and \texttt{demo-ev-of-equal-call} don't
+have constraints over the wellformedness of the quoted term. So, essentially,
+one can verify a clause-processor that returns a malformed term using
+pseudo-evaluators. For example, a verified clause-processor can return an ``if''
+term with an arbitrary fourth argument.
+However, the ACL2 waterfall ensures that any produced subgoals must be
+well-formed. For example, every function symbol must exist in the logical world
+and its number of arguments must also be correct~\cite{kaufmann2015, termp}.
+
+\subsection{Meta-extract}
+When defining a pseudo-evaluator, we define how functions are evaluated to
+validate the transformations done in a clause-processor. Sometimes we want to
+know more than function evaluation.
+
+For example, defining a function in ACL2 generally creates a :definition
+rule\footnote{ACL2 allows for constrained functions (e.g. demo-ev described
+  above) and other logical function definitions that don’t produce :definition
+  rules, but these are not supported in the current version of Smtlink.} that
+equates a call to the function to an instance of the function body.
+One can imagine using this rule in a clause-processor to replace a function call
+with its definition.
+Further from it, another example would be to simplify the proof goal using
+other kind of rewrite rules. In addition, useful type information can also be
+found from the \texttt{type-set} facts.
+
+To achieve this goal, ACL2 provides meta-extract~\cite{meta-extract} that allows
+a clause-processor or meta-function to extract established facts from the ACL2
+logical world. In addition to that, it provides facilities for proving soundness
+of the extraction. This is the key feature of computational reflection that is
+heavily used in Smtlink.
+
+Meta-extract can be defined using the following form (Note that
+\texttt{def-meta-extract} requires that a minimal set of functions must be
+defined in the evaluator, hence we define a new version of \texttt{demo-ev}):
+\begin{lstlisting}[style=lisp]
+  (defevaluator demo-ev demo-ev-list
+    ((typespec-check ts x)
+     (if a b c)
+     (equal a b)
+     (not a)
+     (iff a b)
+     (implies a b)))
+  (def-meta-extract demo-ev demo-ev-list)
+\end{lstlisting}
+This above form produces two meta-extract hypotheses that can be used in the
+soundness theorem of a clause-processor, one for extracting contextual facts and
+the other for extracting global facts --
+\texttt{(demo-ev-meta-extract-global-facts)}. This thesis focuses on the support
+for extracting global facts.
+A key theorem is proved for meta-extract of global facts:
+\begin{lstlisting}[style=lisp]
+  (defthm demo-ev-meta-extract-formula
+    (implies (and (demo-ev-meta-extract-global-facts)
+                  (equal (w st) (w state)))
+             (demo-ev (meta-extract-formula name st)
+                      a)))
+\end{lstlisting}
+The hypothesis \texttt{(demo-ev-meta-extract-global-facts)} states that global
+facts extracted by meta-extract is always valid, i.e. there doesn't exist an
+object for which when its formula is extracted from the logical world, results
+in an invalid formula, evaluated in any environment. If the hypothesis holds,
+then we know we can use \texttt{meta-extract-formula} to extract a rule with a
+given name \texttt{name} from the logical world saved in the current
+\texttt{state}, and the evaluation of that formula is true in any environment.
+
+Given that we have defined the facilities of meta-extract for our evaluator, we
+can use \texttt{meta-extract-formula} in our clause-processor for extracting
+established facts. For a verified clause-processor, we prove the following
+soundness theorem in the end:
+\begin{lstlisting}[style=lisp]
+  (defthm correctness-of-a-user-defined-clause-processor-2
+    (implies (and (demo-ev-meta-extract-global-facts)
+                  (pseudo-term-listp cl)
+                  (alistp a)
+                  (eval (conjoin-clauses
+                          (clauses-result
+                            (user-defined-clause-processor
+                              cl term state)))
+                        a))
+             (eval (disjoin cl) a))
+  :rule-classes :clause-processor)
+\end{lstlisting}
+In comparison to theorem~\ref{prog:cp1}, one additional hypothesis
+\texttt{demo-ev-meta-extract-global-facts} is added. This hypothesis allows us
+to assume that formulas extracted by using meta-extract are valid formulas. By
+using meta-extract, we strengthen the ACL2 logical system by trusting
+meta-extract. Note that it is possible to remove the trust for meta-extract by
+returning each of the extracted formulas as a subgoal. However, doing so would
+complicate the Smtlink code and negatively impact the performance.
+
+\subsection{Computed hints}
+A hint-wrapper~\cite{hint-wrapper} is a way of supplying hints in the statement
+of a theorem. For example, we can have,
+
+\begin{lstlisting}[style=lisp]
+  (defund foo (x y) (or (implies x y) (and x (not y))))
+  (thm
+    (implies (hint-wrapper '(:in-theory (enable foo)))
+             (foo x y)))
+\end{lstlisting}
+
+The \texttt{hint-wrapper} function always returns \texttt{'t}, therefore the
+theorem statement is equivalent to \texttt{(foo x y)}.
+That it, the hint-wrapper term doesn't change the logical meaning of the theorem 
+statement.
+However, it provides hints to be used for a computed-hint. A computed-hint is a
+program that monitors every subgoal produced during a proof. It recognizes
+patterns of a hint-wrapper and installs hints provided by the hint-wrapper into
+subsequent goals. In this example, a computed-hint will install the hint
+\texttt{:in-theory (enable foo)} into the next subgoal, allowing the theorem to
+be proved.
+
+Note that a computed-hint is also a form of proof automation. It allows hints to
+be applied intelligently without manual user intervention. However, it is
+different from reflection, in that it merely guides the proof and does not
+change the theorem statement. Therefore, there isn't any soundness concern with
+uses of computed-hints.
+
+\section{The Architecture}
+\label{sec:arch}
+
+\Yan{This section is a high-level description of the architecture. There should be a
+graph. This section doesn't talk about each step in the pipeline. Instead it
+desribes how the clause processors are connected together through computed hints
+and the connection to Z3.}
+
+Figure~\ref{fig:arch} shows the Smtlink reflection-based architecture composing
+of a chain of verified clause-processors leading to a trusted clause-processor.
+The verified steps include user hint processing, user hypotheses introduction,
+function expansion, type inference, term replacement, trusted clause-processor
+hint generation, and type declaration extraction.
+The user can choose between two trusted clause-processors that transliterate
+from an ACL2 proof goal to an SMT goal: trusted clause-processor and customized
+trusted clause-processor.
+The customized trusted clause-processor gives the user the freedom to program
+their own solver class using the Z3py interface.
+Note that the architecture of Smtlink is chosen to be a linear chain of steps
+for simplicity. Smtlink is highly customizable and one can imagine changing the
+architecture to introduce branches, and even loops. However, these extensions
+are beyond the topic of this thesis.
+
+Each clause-processor serves a certain purpose in the transformation from a
+top-level ACL2 proof goal to an SMT term.
+A common theme of the chain of verified clause-processors is that they make
+heavy use of rule-based reflection. The user can provide rules (established
+facts in the ACL2 world) through the Smtlink hint to guide the reflection
+transformations achieved in each verified clause processor.
+
+\begin{figure}\begin{center}
+  \resizebox{1.0\textwidth}{!}{\input{figs/arch.pdf_t}}
+  \caption{The Smtlink Architecture}\label{fig:arch}
+\end{center}\end{figure}
+
+\begin{itemize}
+\item User hint processing: The first verified
+  clause-processor does user hint processing to process the smtlink hints.
+  \item User hypotheses intro: For any nontrivial theorem, it is almost always a requirement to provide lemmas
+    that can help prove the target proof goal. Typically, the user might have proven
+    a bunch of useful theorems that can help the SMT solver to discharge the proof
+    goal. Sometimes, providing useful theorems improves the performance of SMT
+    solving, in other times, it is necessary to know such fact in order to prove the
+    original goal. Simply providing all lemmas to the SMT solver is a risk for
+    exponential blowup. The user hypotheses introduction clause-processor allows the
+    user to introduce only ``interesting'' lemmas to help proving a proof goal.
+
+  \item Function expansion: Often times, users of theorem provers will define functions for proper
+    abstraction of a nontrivial system. Some of these functions might be recursive.
+    It would be rather tedious to make the user manually expands proof goals into
+    SMT primitives. The function expansion clause-processor automatically expands
+    out functions in a way that is guided by user hints.
+
+  \item Type inference: To bridge the untyped logic of ACL2 with the many-sorted logic of SMT, Smtlink
+    does type inference. The type inference clause-processor has two purposes.
+    First, it assigns a type to each subterm of the proof goal. These types of
+    subterms ensure that a consistent set of types can be assigned to the ACL2 term.
+    Second, the type information is passed onto later stages like term replacement
+    and the final trusted clause-processor for further transformation of the proof
+    goal.
+
+  \item Term replacement: Further from the problem of the different type system of ACL2 and SMT, functions
+    in ACL2 are polymorphic whereas functions in Z3 are typed. For example, in ACL2,
+    \texttt{cons} can be applied to any list, however, in Z3,
+    \texttt{IntegerList.cons} is the function to apply to an \texttt{IntegerList}.
+    Smtlink will need to identify types of subterms and replace them with the
+    appropriately typed versions. For example, we define in ACL2 a function
+    \texttt{integer-list->cons} and replace \texttt{(cons x y)} with
+    \texttt{(integer-list->cons x y)}. The term replacement clause-processor also
+    handles the case when certain sort of SMT doesn't exist in ACL2, which will be
+    discussed in later sections.
+
+  \item Trusted clause-processor hint generation: The trusted clause-processor hint generation clause-processor generates hints
+    that are used by the trusted clause-processor.
+  \item Type declaration extraction: The last verified
+    clause-processor does type declaration extraction to extract type predicates
+    from the disjunct of clauses. At this point, the proof goal is annotated with
+    necessary hypotheses, fully expanded out, well-typed, and replaced with SMT
+    corresponding functions.
+  \item The trusted clause-processors: Smtlink then runs the trusted clause-processor to
+    translate the flattened goal into SMT and invoke the SMT solver.
+\end{itemize}
+
+\Yan{Show an example that run through the architecture.}
+
+\section{The Verified Clause-processors}
+\label{sec:vcp}
+\Yan{A top-level description of how the rule-guided transformations work.}
+
+\subsection{User Hypotheses Introduction}
+The user hypotheses introduction clause-processor allows the user to add
+additional facts to assist the SMT solvers.
+
+The hypotheses are theorems already established in ACL2. Their names and
+instantiation information are provided to Smtlink through the hint interface.
+
+Given a rule, Smtlink uses meta-extract to extract the body of the rule,
+substitute the rule properly and add the negation of it into the disjunct of
+clauses of the goal.
+
+The user can attach any hypotheses onto the goal soundly this way.
+
+\subsection{Function Expansion}
+The function expansion clause-processor flattens the proof goal through
+beta-reduction. Non-recursive function are expanded out by default. Recursive
+functions can be expanded to a user-provided level. The last recursive call is
+treated as an uninterpreted function. It is also possible to treat non-recursive
+function as uninterpreted function by supplying an expansion level of 0.
+
+Given an input goal, the function expansion clause-processor recursively
+traverses the goal. When expanding out a function definition, it uses
+meta-extract to extract the equivalence rule for the function definition.
+It unifies the input argument with the formals of the function to get a
+substitution. Then the clause-processor does beta-reduction to expand the
+function definition. Lambdas are fully expanded out in this process as well.
+
+Through meta-extract, we can verify in ACL2 that this expansion process is
+sound. The hint interface allows the user to have flexibility in how they want
+to control the expansion. 
+
+\subsection{Type Inference}
+Smtlink has a type inference engine fully guided by existing typing rules in
+ACL2. Since any ACL2 function could be a typing rule, this allows a wide range
+of types to be inferred. The user can choose to enable difference set of rules
+and the inferred types will be different.
+
+The type inference engine is composed of two steps. First, a bottom-up pass is
+employed to get all possible types of all subterms. We store the information in
+a data structure called typed-term.
+
+Second, a top-down pass will choose from all possible types a set of types that
+are consistent for assisting the translation to SMT.
+
+\subsection{Term Transformation (Conditional rewriting)}
+Smtlink allows term transformation for rewriting the goal. The motivation of
+term transformation is battle the gap between ACL2 and the SMT solvers. But it
+could also be used as a rewriting capability.
+
+The user provides a set of conditioned equality rules. Smtlink uses meta-extract
+to soundly get the rule. If the condition of the rule could be satisfied, it
+will apply the rule and rewrite the subterm to the rhs of the rule. At the same
+time, it updates the type inference information.
+
+\Yan{Mention alists to arrays}
+
+\section{The Trusted Clause-processors}
+\label{sec:tcp}
+\Yan{Describe what the shape the input to a trusted clause-processor looks like}
+\Yan{Describe on a high-level what the trusted clause-processor does}
+
+\subsection{SMT Sorts}
+BoolSort, IntSort, RealSort, Datatypes (algebraic data type), Abstract types, Arrays
+\Yan{List the SMT sorts supported and the functions associated with them}
+
+\Yan{List the properties verified with each sort}
+
+\Yan{Somewhere I have to mention the treating of equal functions. Should it be here?}
+
+\subsection{Uninterpreted Functions}
+User-defined functions left in the goal are translated as uninterpreted
+functions. The type signature of the uninterpreted functions are returned as
+subgoals back to ACL2 for verification.
+
+\section{Summary}
+\label{sec:summary}
+
+\begin{comment}
+
 \chapter{The Reflection-based Integration Architecture}
 \label{ch:arch}
 
-The architecture of \smtlink{} is composed of a chain of verified
-clause-processors and one trusted clause-processor.
-In ACL2, a clause-processor is a program that takes a clause as input and
-produces a set of output clauses.
-A verified clause-processor ensures that the conjunction of output clauses imply
-the input clause through the proof of a correctness lemma.
-The verified clause-processors are sound by construction. The last
-clause-processor is a trusted clause-processor that transliterates from the ACL2
-language to the Z3 language. A trusted clause-processor is not machine verified.
-We formulate the soundness argument in Chapter~\ref{ch:soundness}.
+The many differences between the ACL2 theorem prover and an SMT solver like Z3
+proposes many challenges for integrating SMT solvers into the ACL2 theorem
+prover.
 
-\smtlink{} uses reflection-based verified clause-processors to achieve soundness
-and performance together.
-Here, reflection refers to \smtlink{}'s ability of syntactically manipulating
-an ACL2 term while preserving its logical meaning.
-The reflection-based verified clause-processors use \texttt{:meta-extract} which
-supports meta-level reasoning using valid terms extracted from the ACL2 world.
-This capability allows \smtlink{} to perform sound reasoning on its own, without
-producing additional goals.
+The foremost difference is that the logic of the ACL2 theorem prover is untyped,
+while the logic of the SMT solvers is many-sorted. First, we identify a subset
+of the sorts of the SMT solvers that are embedded in the ACL2 logic. A proof
+goal in ACL2 needs to be a well-typed term with respect to this subset of sorts,
+so that it can be transliterated into its SMT correspondence.
 
-In this chapter, we first introduce the high-level architecture of \smtlink{}.
-Specifically, it uses computed-hints for automating the relay of goals between
-different clause-processors.
-The architecture can be easily reconfigured to take extra transformation steps.
-We then discuss each of the verified clause-processors. The functionality and
-the algorithms in the clause-processors.
-We also discuss the design of a typed-term that allows us to preserve the type
-inference results and pass them between clause-processors soundly.
-These type inference information enables the transformation in other
-clause-processors, for example, in the replacement clause-processor.
+Another difficulty that comes along with ACL2's untyped logic is that there are
+heavy uses of polymorphic functions, for example, \texttt{car}, \texttt{cdr}
+and \texttt{cons}. However the many-sorted logic of Z3 requires that functions
+or values are associated with a given sort.
+For example, in ACL2 one can write \texttt{(cons 1 nil)} where \texttt{cons}
+is polymorphic, but in Z3, one needs to write \texttt{IntegerList.cons(1,
+  IntegerList.nil)} where \texttt{IntegerList.cons} is a constructor function
+for the sort \texttt{IntegerList} and \texttt{IntegerList.nil} is a nullary
+constructor for the values of sort \texttt{IntegerList}.
+Furthermore, there are commonly used ACL2 features that do not have direct
+correspondence in an SMT solver. For example, alist types and its operations.
 
-\section{The Extensible Architecture}
-The Smtlink architecture enables an extensible and reconfigurable architecture.
-We define a ``hint-wrapper''\cite{hint-wrapper} function that always returns
-\texttt{nil} called \texttt{SMT::hint-please}.
-Clauses in ACL2 are represented as lists of disjunctions, and our hint-wrapper
-can be added as a disjunct to any clause without changing the validity of the 
-clause.
-\texttt{SMT::hint-please} takes one input argument -- the list of hints.
+Last but not least, there exists intricate differences between them.
+These intricate differences, if not handled correctly, can lead to severe
+soundness issue in the integration.
+For example, adding a number with a boolean value in ACL2 is equivalent to
+adding a number to the value 0, so \texttt{(+ 1 t)} evaluates to $1$.
+However, the Z3 Python bindings in Z3py overload $+$ so that \texttt{1+True}
+evaluates to $2$. Another example is when taking \texttt{car} of an empty list.
+In ACL2, \texttt{(car nil)} evaluates to \texttt{nil} while in Z3,
+\texttt{IntegerList.car(IntegerList.nil)} returns an arbitrary value of sort
+\texttt{IntSort()}.
 
-Figure~\ref{fig:arch} shows the architecture of Smtlink.
-The computed-hint called \\
+These challenges mean that a naive translation from the ACL2 Lisp language to
+the Z3 SMT language can often be wrong and lead to soundness issues. Therefore,
+it is crucial to come up with a general solution to address these issues.
+This chapter discusses my solution of a reflection-based integration
+architecture called Smtlink. This architecture takes a proof goal in ACL2,
+applies several sound transformation steps to generate a goal that is
+well-typed under the type system of the SMT solver and preserves the logical
+meaning of the original proof goal.
+A final transliteration step is then applied to generate an SMT term. This
+architecture takes heavy use of the metaprogramming and reflection techniques.
+
+Metaprogramming is based on the observation that programs are data: programs can
+be represented in forms that can be stored and manipulated by computers.
+In metaprogramming, the programmer can write a function that takes a program, or
+a program fragment as an argument, and returns one or more programs or fragments
+as a result. LISP macros are an example of metaprogramming.
+
+Reflection is a technique that bears many meanings in the many fields of
+mathematics and computer science.
+In this thesis, reflection refers to the  ACL2 theorem prover's support for
+reasoning about both a quoted term and the value produced by its evaluation.
+For example, given a quoted term, \texttt{quoted-term-1}, a function in Smtlink
+could derive a new quoted term \texttt{quoted-term-2}, and use the reflection
+capabilities of ACL2 to show that,
+\begin{lstlisting}[style=lisp]
+  (implies (eval quoted-term-2 env) (eval quoted-term-2 env))
+\end{lstlisting}
+It says that the evaluation of \texttt{quoted-term-2} implies the evaluation of
+\\
+\texttt{quoted-term-1} in any environment \texttt{env}.
+This soundness theorem establishes that theorems derived from the application
+of reflection are a sound addition to the given logical system.
+This kind of reflection is referred to as computational reflection
+in~\cite{harrison1995}.
+Computational reflection alleviates the tedium of repeatedly applying the same
+set of proof techniques for similar proofs.
+
+For Smtlink, we develop a rule-guided reflection-based architecture for sound
+transformation from an ACL2 proof goal into a SMT proof goal embedded in ACL2. 
+The architecture is a pipeline of rule-guided reflection steps.
+These reflection steps include but are not limited to, function expansion, type
+inference and term replacement.
+Each reflection-based step takes a proof goal that's the output of a previous
+reflection, inspect and transform the input proof goal and output the
+resulting proof goal to another reflection-based step.
+The transformations are rule-guided. This means that the user supply rules for
+guiding the transformations. For example, the type inference step takes rules
+that specify function return types and use them for guiding the type inference
+of subterms of function calls.
+
+This way, we modularize the architecture into several well-contained
+transformations.
+The reflection-based Smtlink architecture has several advantages. First, each
+transformation step is verified to be sound reflections within ACL2, except for
+the last step that translates directly from an ACL2 proof goal into an SMT term.
+Second, the architecture is modularized and therefore is easily extensible. An
+intrepid user might want to extend the Smtlink architecture for their own use,
+and all they have to do is to add a step into the pipeline of reflection-based
+transformations. Soundness can be easily achieved in these user extensions.
+Third, the transformations are customizable. The user has considerable freedom
+to customize how they want the proof goal to be discharged by supplying rules.
+These rules are extracted from the ACL2 logical world using a mechanism that
+allows sound customized transformations to be done.
+
+This chapter presents the reflection-based architecture of Smtlink.
+Section~\ref{sec:background} introduces several key concepts that enable the
+computational reflection in ACL2.
+Section~\ref{sec:arch} provides a high-level picture of the architecture, and
+presents each steps in the reflection-based architecture.
+Section~\ref{sec:summary} summarizes this chapter.
+
+\section{Background}
+\label{sec:background}
+Reflection allows us to reason about certain parts of a logical system within
+the logical system itself. This generally require a metalogic built into the
+logical system. Such a metalogic can be achieved through higher-order logic in a
+higher-order logic theorem prover~\cite{harrison1995}.
+The ACL2 theorem prover is first-order. In order to provide reflection, it
+provides the user with several key features that enables
+meta reasoning~\cite{boyer1979, hunt2005, kaufmann2017}.
+
+On the high-level, ACL2 provides clause-processors for user-defined
+transformation or simplification of terms.
+A correctness theorem must be established to install a verified clause-processor
+into the ACL2 system. The correctness theorem ensures that the simplifications
+applied to the input clause are sound.
+A pseudo-evaluator must be defined for evaluating the functions applied in the
+clause-processor. ACL2 also provides reflection for allowing the
+clause-processor to consult the logical world for established facts. They can be
+used for guiding the transformation or simplification done in a
+clause-processor. In addition, hint wrappers and computed-hints are used for
+connecting several clause-processors together.
+
+In the rest of this section, each of these features will be discussed. Together,
+they enable an efficient mechanism for using reflection to automate the proof
+process.
+
+\subsection{Clause Processors}\label{subsec:cp}
+In ACL2, a proof goal is represented as a clause. A clause is a disjunction of
+terms. A clause-processor~\cite{clause-processor} takes a proof goal as input
+and produces a list of proof goals. Given that the conjunction of the list of
+output proof goals are proved, the original proof goal will be established.
+
+For a verified clause-processor, it is ensured that the conjunction of output
+proof goals implies the input proof goal. This is done through establishing
+the following correctness theorem.
+
+\begin{lstlisting}[style=lisp, label={prog:cp1}, caption={Correctness theorem of
+  a user defined clause-proecssor}]
+  (defthm correctness-of-a-user-defined-clause-processor-1
+    (implies (and (pseudo-term-listp cl)
+                  (alistp a)
+                  (eval (conjoin-clauses
+                          (clauses-result
+                            (user-defined-clause-processor cl term state)))
+                        a))
+             (eval (disjoin cl) a))
+    :rule-classes :clause-processor)
+\end{lstlisting}
+
+This theorem states that given a list of pseudo-terms \texttt{cl} that
+represents the disjunction of terms in the proof goal, an alist \texttt{a} that
+represents the environment in which the term will be evaluated with respect to,
+if the conjunction of clauses output by the user-defined clause-processor
+\texttt{user-defined-clause-processor} evaluated in environment \texttt{a} leads
+to true, then the original clause \texttt{cl} evaluated in the same environment
+must also lead to true. A proof for the correctness theorem often involves an
+induction proof over the structure of the input pseudo-term type.
+
+ACL2 also provides a trusted clause-processor feature. When using a trusted
+clause-processor, one doesn't need to prove the above correctness theorem. In
+contrast to a verified clause-processor, a trusted clause-processor extends the
+ACL2 logical system with the axiom that the trusted clause-processor is sound.
+ACL2 asks one to provide a trust tag~\cite{defttag} to acknowledge such an
+extension.
+
+\subsubsection{Pseudo-evaluator}
+Since ACL2 is first-order logic, it is not possible to have a complete evaluator
+because a complete evaluator apparently uses second-order logic. In particular,
+one cannot write an evaluator \texttt{eval} that can evaluator a function
+\texttt{f} that is going to be defined. However, we can imagine writing a
+constrained function that can evaluate terms using a subset of defined
+functions. This evaluator treats each function as a single case and evaluates
+them separately. In addition, it checks if such a function already exist. This
+is called a pseudo-evaluator. 
+
+Note that the correctness theorem shown in Section~\ref{subsec:cp} uses a
+pseudo-evaluator called \texttt{eval}. A pseudo-evaluator is a constrained
+function, with constraints (expressed as ACL2 theorems) for the evaluation of
+variables, quoted constants, lambda-expressions, and a specified set of
+functions.  The value produced by the pseudo-evaluator for the evaluation of any
+function outside of that set is unconstrained.  The actual evaluation of an ACL2
+term satisfies all of the constraints of the pseudo-evaluator. Therefore, if one
+can establish that the correctness theorem holds using the pseudo-evaluator,
+then one can infer that the correctness theorem holds for a full evaluator,
+since all constraint theorems proved over a pseudo-evaluator are true theorems
+in a full evaluator as well~\cite{kaufmann2017}. To see this, take the following
+pseudo-evaluator as an example:
+
+\begin{lstlisting}[style=lisp]
+  (defevaluator demo-ev demo-ev-list
+    ((if x y z) (equal x y)) :namedp t)
+\end{lstlisting}
+
+The above form defines an evaluator called \texttt{demo-ev}. The
+\texttt{demo-ev} and \texttt{demo-ev-list} form a mutual recursion of evaluators
+that work on a \texttt{pseudo-termp} and a \texttt{pseudo-term-listp}
+respectively. In this pseudo-evaluator, we specify that it should know about the
+evaluation constraints for \texttt{if} and \texttt{equal}. Together, ten
+constraints are proved.
+The first eight constraints are common constraints that are defined for all
+pseudo-terms. They define the evaluation rules for evaluating a pseudo-term. The
+last two rules, \texttt{demo-ev-of-if-call} and \texttt{demo-ev-of-equal-call}
+are evaluation rules for \texttt{if} and \texttt{equal}.
+
+\begin{lstlisting}[style=lisp]
+(defthmd demo-ev-of-fncall-args
+  (implies (and (consp x)
+                (syntaxp (not (equal a ''nil)))
+                (not (equal (car x) 'quote)))
+           (equal (demo-ev x a)
+                  (demo-ev (cons (car x)
+                                 (kwote-lst (demo-ev-list (cdr x) a)))
+                           nil))))
+(defthm demo-ev-of-variable
+  (implies (symbolp x)
+           (equal (demo-ev x a)
+                  (and x (cdr (assoc-equal x a))))))
+(defthm demo-ev-of-quote
+  (implies (and (consp x) (equal (car x) 'quote))
+           (equal (demo-ev x a) (cadr x))))
+(defthm demo-ev-of-lambda
+  (implies (and (consp x) (consp (car x)))
+           (equal (demo-ev x a)
+                  (demo-ev (caddr (car x))
+                           (pairlis$ (cadr (car x))
+                                     (demo-ev-list (cdr x) a))))))
+(defthm demo-ev-list-of-atom
+  (implies (not (consp x-lst))
+           (equal (demo-ev-list x-lst a) nil)))
+(defthm demo-ev-list-of-cons
+  (implies (consp x-lst)
+           (equal (demo-ev-list x-lst a)
+                  (cons (demo-ev (car x-lst) a)
+                        (demo-ev-list (cdr x-lst) a)))))
+(defthmd demo-ev-of-nonsymbol-atom
+  (implies (and (not (consp x)) (not (symbolp x)))
+           (equal (demo-ev x a) nil)))
+(defthmd demo-ev-of-bad-fncall
+  (implies (and (consp x)
+                (not (consp (car x)))
+                (not (symbolp (car x))))
+           (equal (demo-ev x a) nil)))
+(defthm demo-ev-of-if-call
+  (implies (and (consp x) (equal (car x) 'if))
+           (equal (demo-ev x a)
+                  (if (demo-ev (cadr x) a)
+                      (demo-ev (caddr x) a)
+                    (demo-ev (cadddr x) a)))))
+(defthm demo-ev-of-equal-call
+  (implies (and (consp x) (equal (car x) 'equal))
+           (equal (demo-ev x a)
+                  (equal (demo-ev (cadr x) a)
+                         (demo-ev (caddr x) a)))))
+\end{lstlisting}
+
+\texttt{demo-ev-of-if-call} says that if \texttt{x} is a pseudo-term of an
+\texttt{if} call, evaluating \texttt{x} with respect to the environment
+\texttt{a} is equivalent to evaluating the ``condition'', ``then'' and ``else''
+branches seperately and then form an ``if'' after the evaluations.
+Similarly for \texttt{demo-ev-of-equal-call}, evaluating an ``equal'' term is
+the same as evaluating the two sides and then test for equality.
+The above constraints are the only facts ACL2 knows about \texttt{demo-ev} and
+\texttt{demo-ev-list}. When evaluating a transformation in a clause-processor,
+if the transformation goes beyond the set of constraints, one cannot prove
+soundness of the reflection. On the other hand, if these constraints are enough
+for establishing soundness of a clause-processor, then we know the soundness of
+such a clause-processor also holds in a full evaluator.
+
+Note that \texttt{demo-ev-of-if-call} and \texttt{demo-ev-of-equal-call} don't
+have constraints over the wellformedness of the quoted term. So, essentially,
+one can verify a clause-processor that returns a malformed term using
+pseudo-evaluators. For example, a verified clause-processor can return an ``if''
+term with an arbitrary fourth argument.
+However, the ACL2 waterfall ensures that any produced subgoals must be
+well-formed. For example, every function symbol must exist in the logical world
+and its number of arguments must also be correct~\cite{kaufmann2015, termp}.
+
+\subsubsection{Meta-extract}
+When defining a pseudo-evaluator, we define how functions are evaluated to
+validate the transformations done in a clause-processor. Sometimes we want to
+know more than function evaluation.
+
+For example, defining a function in ACL2 generally creates a :definition
+rule\footnote{ACL2 allows for constrained functions (e.g. demo-ev described
+  above) and other logical function definitions that don’t produce :definition
+  rules, but these are not supported in the current version of Smtlink.} that
+equates a call to the function to an instance of the function body.
+One can imagine using this rule in a clause-processor to replace a function call
+with its definition.
+Further from it, another example would be to simplify the proof goal using
+other kind of rewrite rules. In addition, useful type information can also be
+found from the \texttt{type-set} facts.
+
+To achieve this goal, ACL2 provides meta-extract~\cite{meta-extract} that allows
+a clause-processor or meta-function to extract established facts from the ACL2
+logical world. In addition to that, it provides facilities for proving soundness
+of the extraction. This is the key feature of computational reflection that is
+heavily used in Smtlink.
+
+Meta-extract can be defined using the following form (Note that
+\texttt{def-meta-extract} requires that a minimal set of functions must be
+defined in the evaluator, hence we define a new version of \texttt{demo-ev}):
+\begin{lstlisting}[style=lisp]
+  (defevaluator demo-ev demo-ev-list
+    ((typespec-check ts x)
+     (if a b c)
+     (equal a b)
+     (not a)
+     (iff a b)
+     (implies a b)))
+  (def-meta-extract demo-ev demo-ev-list)
+\end{lstlisting}
+This above form produces two meta-extract hypotheses that can be used in the
+soundness theorem of a clause-processor, one for extracting contextual facts and
+the other for extracting global facts --
+\texttt{(demo-ev-meta-extract-global-facts)}. This thesis focuses on the support
+for extracting global facts.
+A key theorem is proved for meta-extract of global facts:
+\begin{lstlisting}[style=lisp]
+  (defthm demo-ev-meta-extract-formula
+    (implies (and (demo-ev-meta-extract-global-facts)
+                  (equal (w st) (w state)))
+             (demo-ev (meta-extract-formula name st)
+                      a)))
+\end{lstlisting}
+The hypothesis \texttt{(demo-ev-meta-extract-global-facts)} states that global
+facts extracted by meta-extract is always valid, i.e. there doesn't exist an
+object for which when its formula is extracted from the logical world, results
+in an invalid formula, evaluated in any environment. If the hypothesis holds,
+then we know we can use \texttt{meta-extract-formula} to extract a rule with a
+given name \texttt{name} from the logical world saved in the current
+\texttt{state}, and the evaluation of that formula is true in any environment.
+
+Given that we have defined the facilities of meta-extract for our evaluator, we
+can use \texttt{meta-extract-formula} in our clause-processor for extracting
+established facts. For a verified clause-processor, we prove the following
+soundness theorem in the end:
+\begin{lstlisting}[style=lisp]
+  (defthm correctness-of-a-user-defined-clause-processor-2
+    (implies (and (demo-ev-meta-extract-global-facts)
+                  (pseudo-term-listp cl)
+                  (alistp a)
+                  (eval (conjoin-clauses
+                          (clauses-result
+                            (user-defined-clause-processor
+                              cl term state)))
+                        a))
+             (eval (disjoin cl) a))
+  :rule-classes :clause-processor)
+\end{lstlisting}
+In comparison to theorem~\ref{prog:cp1}, one additional hypothesis
+\texttt{demo-ev-meta-extract-global-facts} is added. This hypothesis allows us
+to assume that formulas extracted by using meta-extract are valid formulas. By
+using meta-extract, we strengthen the ACL2 logical system by trusting
+meta-extract. Note that it is possible to remove the trust for meta-extract by
+returning each of the extracted formulas as a subgoal. However, doing so would
+complicate the Smtlink code and negatively impact the performance.
+
+\subsection{Computed hints}
+A hint-wrapper~\cite{hint-wrapper} is a way of supplying hints in the statement
+of a theorem. For example, we can have,
+
+\begin{lstlisting}[style=lisp]
+  (defund foo (x y) (or (implies x y) (and x (not y))))
+  (thm
+    (implies (hint-wrapper '(:in-theory (enable foo)))
+             (foo x y)))
+\end{lstlisting}
+
+The \texttt{hint-wrapper} function always returns \texttt{'t}, therefore the
+theorem statement is equivalent to \texttt{(foo x y)}.
+That it, the hint-wrapper term doesn't change the logical meaning of the theorem 
+statement.
+However, it provides hints to be used for a computed-hint. A computed-hint is a
+program that monitors every subgoal produced during a proof. It recognizes
+patterns of a hint-wrapper and installs hints provided by the hint-wrapper into
+subsequent goals. In this example, a computed-hint will install the hint
+\texttt{:in-theory (enable foo)} into the next subgoal, allowing the theorem to
+be proved.
+
+Note that a computed-hint is also a form of proof automation. It allows hints to
+be applied intelligently without manual user intervention. However, it is
+different from reflection, in that it merely guides the proof and does not
+change the theorem statement. Therefore, there isn't any soundness concern with
+uses of computed-hints.
+
+\subsection{Enabling a Reflection-base Architecture}
+As is discussed in this chapter, clause-processors treat ACL2 proof goals as
+quoted terms and permits meta-programming.
+Pseudo-evaluators provide a way of verifying soundness of a clause-processor.
+Meta-extract allows reflection to be achieved in clause-processors.
+Computed-hints allow us to chain several reflection-based steps together to
+build an extensible architecture.
+Together, the clause-processor, pseudo-evaluator, meta-extract and
+computed-hints features enable a reflection-based architecture for Smtlink.
+
+The next section is a detailed description of the architecture of Smtlink. It
+shows how the reflection-based architecture is enabled through applications of
+clause-processors, pseudo-evaluators, meta-extract and computed-hints.
+
+\section{The Reflection-based Architecture}
+\label{sec:arch}
+Figure~\ref{fig:arch} shows the Smtlink reflection-based architecture composing
+of a chain of verified clause-processors leading to a trusted clause-processor.
+The verified steps include user hint processing, user hypotheses introduction,
+function expansion, type inference, term replacement, trusted clause-processor
+hint generation, and type declaration extraction.
+The user can choose between two trusted clause-processors that transliterate
+from an ACL2 proof goal to an SMT goal: trusted clause-processor and customized
+trusted clause-processor.
+The customized trusted clause-processor gives the user the freedom to program
+their own solver class using the Z3py interface.
+Note that the architecture of Smtlink is chosen to be a linear chain of steps
+for simplicity. Smtlink is highly customizable and one can imagine changing the
+architecture to introduce branches, and even loops. However, these extensions
+are beyond the topic of this thesis.
+
+Each clause-processor serves a certain purpose in the transformation from a
+top-level ACL2 proof goal to an SMT term.
+A common theme of the chain of verified clause-processors is that they make
+heavy use of rule-based reflection. The user can provide rules (established
+facts in the ACL2 world) through the Smtlink hint to guide the reflection
+transformations achieved in each verified clause processor. The first verified
+clause-processor does user hint processing to process the smtlink hints.
+
+For any nontrivial theorem, it is almost always a requirement to provide lemmas
+that can help prove the target proof goal. Typically, the user might have proven
+a bunch of useful theorems that can help the SMT solver to discharge the proof
+goal. Sometimes, providing useful theorems improves the performance of SMT
+solving, in other times, it is necessary to know such fact in order to prove the
+original goal. Simply providing all lemmas to the SMT solver is a risk for
+exponential blowup. The user hypotheses introduction clause-processor allows the
+user to introduce only ``interesting'' lemmas to help proving a proof goal.
+
+Often times, users of theorem provers will define functions for proper
+abstraction of a nontrivial system. Some of these functions might be recursive.
+It would be rather tedious to make the user manually expands proof goals into
+SMT primitives. The function expansion clause-processor automatically expands
+out functions in a way that is guided by user hints.
+
+To bridge the untyped logic of ACL2 with the many-sorted logic of SMT, Smtlink
+does type inference. The type inference clause-processor has two purposes.
+First, it assigns a type to each subterm of the proof goal. These types of
+subterms ensure that a consistent set of types can be assigned to the ACL2 term.
+Second, the type information is passed onto later stages like term replacement
+and the final trusted clause-processor for further transformation of the proof
+goal.
+
+Further from the problem of the different type system of ACL2 and SMT, functions
+in ACL2 are polymorphic whereas functions in Z3 are typed. For example, in ACL2,
+\texttt{cons} can be applied to any list, however, in Z3,
+\texttt{IntegerList.cons} is the function to apply to an \texttt{IntegerList}.
+Smtlink will need to identify types of subterms and replace them with the
+appropriately typed versions. For example, we define in ACL2 a function
+\texttt{integer-list->cons} and replace \texttt{(cons x y)} with
+\texttt{(integer-list->cons x y)}. The term replacement clause-processor also
+handles the case when certain sort of SMT doesn't exist in ACL2, which will be
+discussed in later sections.
+
+The trusted clause-processor hint generation clause-processor generates hints
+that are used by the trusted clause-processor. The last verified
+clause-processor does type declaration extraction to extract type predicates
+from the disjunct of clauses. At this point, the proof goal is annotated with
+necessary hypotheses, fully expanded out, well-typed, and replaced with SMT
+corresponding functions. Smtlink then runs the trusted clause-processor to
+translate the flattened goal into SMT and invoke the SMT solver.
+
+The rest of this Chapter walks through each of the clause-processors defined in
+ACL2. We will show examples that illustrates the purpose of that
+clause-processor, what the clause-processor achieves, the main algorithm, and
+the technical challenges.
+
+\section{The Clause-processors}
+\label{sec:cp}
+
+This section focus on the functionality and technical challenges for each
+clause-processor. 
+
+\subsection{User Hint Processing}
+Meta-extract allows Smtlink to extract useful rules from the ACL2 logical world
+to achieve reflection over the proof goal. However, sometimes Smtlink will need
+to reply on the user for specifying what rules are ``interesting''. This is done
+by the user providing hints to Smtlink. To distinguish between the ``:hint''
+provided to ``defthm'' and the hints provided to ``Smtlink'', we call our hints,
+the ``smtlink hint''.
+
+The very first clause-processor processes the hints provided by the user. It
+parses the hint syntax into a smtlink hint data structure for internal use.
+Table~\ref{tab:smthint} shows hints provided to the four main clause-processors.
+
+\begin{table}[h]
+  \begin{tabular}{|r|l|}
+    \hline
+    User Hypotheses Introduction & Rules for the hypotheses \\
+    \hline
+    Function Expansion & Returns theorems and expansion level \\
+    \hline
+    Type Inference & Type inference rules \\
+    \hline
+    Term Replacement 	& Term replacement rules \\
+    \hline
+  \end{tabular}
+  \caption{Smtlink hints}
+  \label{tab:smthint}
+\end{table}
+
+A state variable called \texttt{smt-hint} stores a default hint for Smtlink.
+When processing the user hint, Smtlink updates the global state. This saves the
+user the effort to write repeated hints.
+The user hint processing clause-processor doesn't change the proof goal. It only
+updates the data structure storing the hints. Therefore the soundness of this
+user hint processing clause-processor is trivial.
+
+\subsection{User Hypotheses Introduction}
+Smtlink enables the user to add user hypotheses to the target proof goal through
+the user hypotheses introduction clause-processor.
+For example, in [this proof goal], the user has already proven [this
+lemma]. The user might need to inform the SMT solver of this established result.
+In order to do that, the user simplify provide this rule in the Smtlink hint.
+
+\begin{lstlisting}[style=lisp]
+(the-hint ...)
+\end{lstlisting}
+
+Given a proof goal $G$, a user hypothesis rule called $R$ and a substitution for
+the hypothesis $Subst$. The user hypotheses introduction clause-processor first
+uses meta-extract to extract the body $H$ for rule $R$ from the ACL2 logical
+world. It then uses the substitution pair $Subst$ to create a substitution of
+the rule $H[Subst]$. Proof goals in ACL2 are represented as a disjunction of
+clauses. To add the hypothesis, we add the negation of $H[Subst]$ into the
+disjunction of clauses. It can be proved in ACL2 that this transformation is
+sound. Adding a list of user hypotheses is an obvious recursion of adding one
+user hypothesis.
+
+Note that the user might also want to provide a hypothesis that has not been
+proven in ACL2 yet, but they believe it to be true. In that case, Smtlink will
+have to return a subgoal for this hypothesis back to ACL2. For simplicity and
+performance considerations, Smtlink do not do this currently. However, there is
+no theoretical hurdle to add this feature.
+
+\subsection{Function Expansion}
+
+The function expansion clause-processor flattens the proof goal through
+beta-reduction. Non-recursive function are expanded out by default. Recursive
+functions can be expanded to a user-provided level. The last recursive call is
+treated as an uninterpreted function. It is also possible to treat non-recursive
+function as uninterpreted function by supplying an expansion level of 0.
+Built-in functions and functions for user-defined types are the base case.
+
+\begin{table}[h]
+  \begin{tabular}{|r|l|}
+    \hline\
+    \texttt{equal} & \texttt{\_SMT\_.equal} \\
+    \hline
+    \texttt{<} & \texttt{\_SMT\_.lt} \\
+    \hline
+    \texttt{if} & \texttt{\_SMT\_.ifx} \\
+    \hline
+    \texttt{not} 	& \texttt{\_SMT\_.notx} \\
+    \hline
+    \texttt{binary-+} 	& \texttt{\_SMT\_.plus} \\
+    \hline
+    \texttt{binary-*} 	& \texttt{\_SMT\_.times} \\
+    \hline
+    \texttt{unary-/} 	& \texttt{\_SMT\_.reciprocal} \\
+    \hline
+    \texttt{unary--} 	& \texttt{\_SMT\_.negate} \\
+    \hline
+  \end{tabular}
+  \caption{Built-in Functions}
+  \label{tab:builtin}
+\end{table}
+
+Table~\ref{tab:builtin} shows the built-in functions that operates over built-in
+types \texttt{booleanp}, \texttt{integerp}, \texttt{rationalp} and
+\texttt{symbolp}. For user-defined algebraic datatypes, constructor and
+destructor functions are also treated as base functions. For alist types,
+\texttt{assoc-equal} and \texttt{acons} are base functions.
+
+Given the input proof goal $G_{hypo}$, the function expansion clause-processor
+recursively traverses the goal. If it encounters a built-in function or a
+function associated with a user-defined type, it leaves the term as is.
+Otherwise, if it is a non-recursive function, the clause-processor uses
+meta-extract to extract the equivalence rule for the function definition from
+the ACL2 logical world. It then tries to unify the input argument with the
+formals of the function definition to get a substitution. Using the
+substitution, the clause-processor does beta-reduction to fully expand out the
+function. If the function is non-recursive, the function will be expanded out to
+a given level. Lambdas are fully expanded out as well.
+
+One technical challenge for the function expansion clause-processor is its
+termination proof. We use a clock that always decrease to force the termination
+of the expansion. The clock should be large enough for the clause-processor to
+be useful. We choose the total number of function definitions in the logical
+world as the clock.
+
+\subsection{Type Inference}
+Suppose the proof goal after function expansion is called $G_{expand}$. This
+goal is composed of constants of built-in types, built-in function calls and
+user-defined uninterpreted functions. This goal is ready for translation to SMT
+if all constants and functions have a correspondence in the SMT solver.
+However, there are many differences between the logic of ACL2 and SMT that makes
+it impossible do a direct translation.
+
+First, the logic of ACL2 is untyped. All functions in ACL2 are total functions.
+For example, \texttt{car} takes any type of input argument, an integer list, a
+rational list, or even a symbol \texttt{'a}. However, there is no such function
+in the SMT solver. The SMT solver uses many-sorted logic. For an integer list,
+its \texttt{car} function is typed as \texttt{IntegerList.car}. This means that
+for any term \texttt{x}, we need to know what its type is, to be able to
+recognize the sort for the function that operates on it. For example, if we can
+infer that \texttt{x} is of \texttt{integer-list-p}, then we know \texttt{(car
+  x)} could be translated into \texttt{IntegerList.car}.
+
+In addition, there exists subtle differences between the logic of ACL2 and the
+logic of SMT. For example, \texttt{(car x)} is \texttt{'nil} when x is
+\texttt{'nil}. However, \texttt{IntegerList.car(IntegerList.nil)} returns an
+arbitrary integer. This means that, we can only translates \texttt{(car x)} into
+\texttt{(IntegerList.car(x))} when \texttt{(not (equal (x nil)))}.
+
+Smtlink does type inference to solve these issues. To handle these problems, the
+type inference of Smtlink should work for not just regular types like integers,
+rationals, booleans, but also for the other SMT sorts like datatypes, abstract
+sorts and array sorts. In addition, it needs to do a bit more reasoning about
+checking for \texttt{'nil} or \texttt{0}.
+
+The logic of ACL2 is untyped, so the question is where do the types come from.
+Here we identify a set of functions in ACL2 as type predicates:
+built-in types like \texttt{integerp}, \texttt{rationalp}(\texttt{realp} for
+ACL2(r)), \texttt{booleanp}, \texttt{symbolp}, and user-defined types like
+alists, algebraic datatypes and abstract types. (We identify for each of these
+types an SMT sort.)
+For each of these types, several functions that operates over these types are
+identified. Each such function is associated with at least one type inference
+rule. The Smtlink hint for type inference allows the user to provide hints about
+these type inference rules. To allow reasoning about simple constraints over
+types, we also identify any single-argument function as part of the type
+information. For example, for a variable \texttt{x}, its type information can be
+\texttt{(and (integerp x) (x < 0))}, which essentially states that x is a
+negative integer.
+
+Given that a set of functions recognized as type predicates, and a set of type
+inference rules, Smtlink uses a rule-based two-pass algorithm for type
+inference.
+
+We define a data structure called \texttt{typed-term}.
+
+\begin{lstlisting}[style=lisp]
+  (defprod typed-term ((term pseudo-termp)
+                       (path-cond pseudo-termp)
+                       (judgements pseudo-termp)
+                       (smt-judgements pseudo-termp)))
+\end{lstlisting}
+
+The \texttt{term} field represents a clause or a subterm of the clause.
+\texttt{path-cond} is the conjunction of branch conditions that leads to
+\texttt{term}, \texttt{judgements} are all the type judgements inferred for
+\texttt{term} and \texttt{smt-judgements} is one consistent type judgements
+chosen for each subterm. For example, if a goal includes the hypothesis
+\texttt{integerp x}, and has the subterm \texttt{(* x x)}, the typed-term for
+\texttt{(* x x)} could be,
+
+\begin{lstlisting}[style=lisp]
+  (typed-term '(binary-* x x) '(integerp x)
+    '(if (if (integerp (binary-* x x)) 't 'nil)
+         (if (if (integerp x) 't 'nil)
+             (if (if (integerp x) 't 'nil) 't 'nil)
+             'nil)
+         'nil)
+    '(if (if (integerp (binary-* x x)) 't 'nil)
+         (if (if (integerp x) 't 'nil)
+             (if (if (integerp x) 't 'nil) 't 'nil)
+             'nil)
+         'nil))
+\end{lstlisting}
+
+The shape of the type judgements maps directly to the shape of the
+term\footnote{Note that for each occurrence of \texttt{x} in \texttt{(binary-* x
+    x)}, there is a type judgement for it}. The judgement is added as a
+hypothesis to the main goal. We provide a set of constructor and destructors
+that operate over \texttt{typed-term} that make is easy to access subterms,
+their path conditions and type judgements.
+
+The two-pass type inference algorithm is implemented using two clause
+processors. The first clause processor performs a post-order traversal of the
+goal, and constructs a \texttt{typed-term} that annotates each subterm with
+\texttt{all} type recognizers (given the provided list of type inference rules)
+that it can be shown to be satisfied by the subterm. A set of supertype and
+subtype rules can be provided to expand the set of type recognizers inferred.
+This clause processor recursively traverses the pseudo-term with the following
+four cases:
+
+\begin{enumerate}
+  \item Constants: Types of constants are trivially proved using
+    \texttt{meta-extract}.
+  \item Variables: We find type judgements from the path condition. The
+    disjuncts of a clause are sorted so that the type predicates appear early in
+    the path.
+  \item \texttt{if}-expression: We treat \texttt{if} specially because the
+    condition of an \texttt{if} is used to augment the path condition for the
+    ``then'' and ``else'' arguments.
+  \item Function calls (other than \texttt{if}): Type inference rules are
+    obtained using \texttt{meta-extract}. Polymorphism is supported by allowing
+    the same function to have multiple type inference rules.
+\end{enumerate}
+
+Note that this post-order type inference algorithm is not just limited to the
+use within Smtlink. It can be used for any type inference within ACL2. Even
+better the user can control the way they want type inference to be carried out
+through enabling the right set of rules.
+
+Having found all valid type judgements for each subterm, the second clause
+processor chooses type judgements that are consistent for the many-sorted logic
+of the SMT solver. For example, \texttt{(list 1 2 3)} satisfies both
+\texttt{integer-listp} and \texttt{rational-listp}, but Z3 considers these to be
+distinct sorts. Note that this clause processor chooses by discarding type
+judgements that won't be used in the translation. Therefore it must be sound.
+
+\subsection{Term Replacement}
+
+Term replacement replaces subterms in the proof goal to another term that is
+equivalent to this term given the current path-condition. There are two use
+cases in Smtlink that requires term replacement. However, the term replacement
+clause processor is a general purpose rule-based term transformer. It can be
+used for any kind of term replacement, given that the term replacement rule
+follows a given structure.
+
+The first usage is for static dispatching of polymorphic functions. For example,
+the lists in ACL2 shares the same set of constructor and distructors
+\texttt{cons}, \texttt{car} and \texttt{cdr}. However, we want to be able to
+translate them into the their typed versions in Z3, for example,
+\texttt{IntegerList.cons}, \texttt{IntegerList.car} and
+\texttt{IntegerList.cdr}. This translation should also solve the problem that
+\texttt{IntegerList.car} means different things from \texttt{car} when the input
+is an empty list. Imagine given the following typed-term:
+
+\begin{lstlisting}[style=lisp]
+  (typed-term
+    '(car x lst)
+    '(if (integerp x)
+         (if (integer-list-p lst) (not (null lst)) 'nil)
+     'nil)
+    '(if (if (integerp (car x lst)) 't 'nil)
+         ...
+         'nil)
+    '(if (if (integerp (car x lst)) 't 'nil)
+         ...
+         'nil))
+\end{lstlisting}
+
+Given that we have defined a typed version of \texttt{car} called
+\texttt{integer-list-car} that has the following definition:
+
+\begin{lstlisting}[style=lisp]
+  (defun integer-list-car (x)
+    (if (null x) 0 (car x)))
+\end{lstlisting}
+
+we can prove the following theorem:
+
+\begin{lstlisting}[style=lisp]
+  
+\end{lstlisting}
+
+
+\subsubsection{Alists vs Arrays}
+
+\subsection{Trusted Clause-processor Hint Generation}
+
+\subsection{Type Declaration Extraction}
+
+\subsection{The Trusted Clause-processor}
+We start by identifying a subset of the SMT sorts that are supported by Smtlink.
+These include Bool sort, Int sort, Real sort, Datatype sort, Array sort, and
+Abstract sort. A set of functions are associated with each sort. These sorts and
+their associated functions are embedded in ACL2. For each sort and its
+associated functions, properties that these SMT sorts should satisfy are
+established within ACL2. These properties ensure that the last step of direct
+translation from ACL2 to Z3 is a sound translation. The rest of the architecture
+takes care of transforming from an ACL2 term to an embedding of the SMT term.
+These transformations allow the user to define an ACL2 proof goal on the
+high-level and the tool will do the heavy work of transforming it into an SMT
+term.
+
+\subsection{Connecting the Clause-processors}
+
+The chain of verified clause-processors are connected through use of
+hint-wrapper and computed-hints.
+We define a ``hint-wrapper'' function that always returns \texttt{nil} called
+\\
+\texttt{SMT::hint-please}.
+The hint-wrapper term is added as a disjunct to a proof goal.
+\texttt{SMT::hint-please} only takes one input argument -- the list of hints.
+A computed-hint called
 \texttt{SMT::SMT-computed-hint} searches for a disjunct of the form
-\texttt{(SMT::hint-please ...)} in each goal generated by ACL2.
+\texttt{(SMT::hint-please ...)} in each goal generated by Smtlink.
 When it finds such an instance, the \texttt{SMT::SMT-computed-hint}
 will return a \texttt{computed-hint-replacement} of the form:
-\begin{lstlisting}[style=codestyle]
+\begin{lstlisting}[style=Lisp]
   `(:computed-hint-replacement
     ((SMT::SMT-computed-hint clause))
     (:clause-processor (SMT::some-verified-cp clause ,combined-hint)))
@@ -69,717 +1350,16 @@ Each clause processor consults this table to determine its successor.
 For example, after Smtlink finishes processing user hints, it then consults the
 configuration table for the next clause-processor, which is ``CP1'' for adding
 user hypotheses.
-A \texttt{SMT::hint-please} term is added to the list of clauses, and it informs
-the computed-hint what clause-processor hint to generate for the next step.
+A \texttt{SMT::hint-please} term is added to the list of clauses informing
+the computed-hint what clause-processor to use for the next step.
 The computed-hint will then be able to install the next step for adding user
 hypotheses. Likewise, at the end of ``CP1'', a \texttt{SMT::hint-please} term is
 added to the list of clauses, and it again informs the computed-hint what
-clause-processor hint to generate next.
+clause-processor hint to generate.
 Note that this architecture is configured by an alist table that can be easily
 extended and reconfigured.
 
-\section{The Verified Clause Processors}
-Let $G$ denote the goal to be proven, and $h$ denote the Smtlink hint provided
-by the user, Smtlink uses several verified clause processors to transform the
-goal into a form that can be readily translated into Z3. The first is a clause
-processor that processes the unstructured list form of user hint into a
-structured data structure. It produces an error if the hint is syntactically
-wrong. The goal itself is unchanged.
+\section{Summary}
+\label{sec:summary}
 
-The next five clause processors do transformations over the goal.
-The first of them adds hypotheses provided by the user by instantiating existing
-theorem statements.
-The second clause-processor expands non built-in functions according to user
-hints.
-After that, another clause-processor reorders hypotheses in the goal so that
-type predicates come first in the disjunct of clauses. The algorithm of
-type-inference depends on this assumption.
-Two type inference clause processors are used to produce type information for
-subterms.
-The last is a clause processor that does term replacement. Term replacement are
-useful for dispatching types for polymorphic functions in ACL2, but is not
-limited to such use.
-These clause processors uses \texttt{:meta-extract} for achieving reflection.
-This means that transformations can be done soundly without having to produce
-additional goals.
-
-Two other clause processors are used for preparing information needed for the
-trusted clause processors.
-One clause processor generates hints that are used in the trusted clause
-processor for the transliteration. Another one is used for extracting type
-predicates out of the goal.
-
-In this chapter, we will discuss each of the verified clause processors in
-detail. We demonstrate an example and walk through the transformations on it.
-We will discuss the algorithms that runs in each of the clause processors.
-
-\subsection{An Example}
-Consider theorem~\ref{prog:poly} as an example:
-\begin{program}[H]
-  \caption{A nonlinear inequality problem}
-  \label{prog:poly}
-  \lstinputlisting[language=Lisp]{progs/poly.lisp}
-\end{program}
-
-In this theorem, we want to prove that \ldots. \Yan{Example in development}
-When providing \texttt{:smtlink [smt-hint]} as the hint, the user is informing
-ACL2 to use Smtlink, instead of the default ACL2 waterfall for discharging the
-goal.
-
-\subsubsection{The Smtlink Hint}
-\begin{program}[h]
-  \caption{The Smtlink Hint}
-  \label{prog:hint}
-  \lstinputlisting[language=Lisp]{progs/hint-top.lisp}
-\end{program}
-
-The Smtlink hint follows a structure as shown in~\ref{prog:hint}.
-There are two modes of Smtlink. The \texttt{:smtlink} hint is the standard
-Smtlink that uses the built-in interface to the SMT solver. The
-\texttt{:smtlink-custom} could be used when an intrepid user want to extend the
-default SMT interface provided by Smtlink.
-The \texttt{:functions} option provides information for return type and
-expansion level of user-defined functions.
-The \texttt{:hypotheses} provides names of theorem statements that can be used
-as known facts for helping the SMT solver to discharge the goal.
-The \texttt{:acl2types} option provides type information for type inference in
-ACL2.
-The \texttt{:datatypes} option provides type information for translating types
-in the SMT solver.
-The \texttt{:replaces} option provides names of theorem statements for term
-replacement.
-The \texttt{:int-to-ratp} option specifies that the user wants to translates all
-integers as reals in the \acs{SMT} solver. This is convenient because Z3 doesn't
-support mixing of the non-linear solver and integer theories. 
-The \texttt{:smt-fname} option specifies the name of the produced \acs{SMT}
-file. If unspecified, Smtlink automatically generates a name that avoids naming
-collision.
-The \texttt{:rm-file} specifies whether one wants to remove the produced file.
-By default the file is kept.
-The \texttt{:smt-dir} specifies where to write the produced file. By default, it
-is stored at \texttt{/tmp/py\_file}.
-
-\paragraph{functions: }
-\begin{program}[h]
-  \caption{The \texttt{:function} smtlink hint}
-  \label{prog:funchint}
-  \lstinputlisting[language=Lisp]{progs/hint-function.lisp}
-\end{program}
-
-The \texttt{:function} hint follows a structure as shown
-in~\ref{prog:funchint}. \texttt{[function-name]} is the name of the function.
-The option \texttt{:return} describes a list of \texttt{[theorem
-  specification]}s that can be used for inferring return types of the given
-function.
-The option \texttt{:depth} describes how many times a function will be expanded.
-The default value for \texttt{:depth} is $0$. Non-basic function that are left
-in the term after expansion are treated as uninterpreted functions. For
-soundness, Smtlink returns a subgoal stating the return type of the
-uninterpreted function.
-The option \texttt{:uninterpreted-hints} provides hints to help discharging this
-subgoal.
-The options \texttt{:translation}, \texttt{:return-type} and
-\texttt{:fn-to-const} are used in~\ref{prog:datatypehint} for the
-transliteration in the trusted clause-processor.
-
-A \texttt{[theorem specification]} follows the structured in~\ref{prog:thmspec},
-which essentially requires a theorem name and a list of formals of the given
-function of interest.
-
-\begin{program}[h]
-  \caption{The theorem specification hint}
-  \label{prog:thmspec}
-  \lstinputlisting[language=Lisp]{progs/hint-thm-spec.lisp}
-\end{program}
-
-\paragraph{hypotheses: }
-\begin{program}[h]
-  \caption{The \texttt{:hypotheses} smtlink hint}
-  \label{prog:hypohint}
-  \lstinputlisting[language=Lisp]{progs/hint-hypotheses.lisp}
-\end{program}
-
-The \texttt{:hypotheses} hint follows a structure as shown
-in~\ref{prog:hypohint}. It follows the standard ACL2 \texttt{:use} hint where
-one specifies an established theorem to use and the bindings for instantiating
-the theorem.
-
-\paragraph{acl2types: }
-
-\begin{program}[h]
-  \caption{The \texttt{:acl2types} smtlink hint}
-  \label{prog:acl2typehint}
-  \lstinputlisting[language=Lisp]{progs/hint-acl2types.lisp}
-\end{program}
-
-The \texttt{:acl2types} hint as shown in~\ref{prog:acl2typehint} specifies types
-that are used in ACL2 type inference clause processors. The \texttt{:subtype}
-option specifies types that are subtypes of the given type of interest. An
-established theorem must be provided to justify the subtyping relationship using
-the \texttt{:thm} option. Likewise, the \texttt{:supertype} option is for types
-that are supertypes of the given type of interest. The \texttt{:thm} option
-follows the structure as shown in~\ref{prog:thmspec}.
-
-\paragraph{datatypes: }
-
-\begin{program}[h]
-  \caption{The \texttt{:datatypes} smtlink hint}
-  \label{prog:datatypehint}
-  \lstinputlisting[language=Lisp]{progs/hint-datatypes.lisp}
-\end{program}
-
-The \texttt{:datatypes} option describes datatypes that will be defined in the
-\acs{SMT} solver. There are three type of \texttt{:datatypes}. The first option
-is \texttt{:sumtypes} that specifies sorts that are defined using the Z3
-\texttt{Datatype} feature. These essentially define sums of products. The second
-option is \texttt{:arrays} that specifies array sorts that are defined using the
-Z3 \texttt{ArraySort} feature. The third option is \texttt{:abstracts} which
-defines abstract sorts using \texttt{DeclareSort}.
-
-\begin{program}[H]
-  \caption{The \texttt{:sumtypes} datatypes hint}
-  \label{prog:sumtypehint}
-  \lstinputlisting[language=Lisp]{progs/hint-sum.lisp}
-\end{program}
-
-For \texttt{:sumtypes}, if the algebraic datatype is tagged, then one can
-provide a kind function through the option \texttt{:kind}. Otherwise,
-\texttt{:kind} will be \texttt{nil}, indicating an untagged sum. The option
-\texttt{:recognizer} describes the recognizer function for this algebraic
-datatype. The function description follows~\ref{prog:funchint} where
-\texttt{:translation} specifies which string should the function be translated
-into, \texttt{:return-type} specifies the return type of the function and
-\texttt{:fn-to-const} describes whether this function should be translated into
-a constant in Z3. This is used for the translation of \texttt{nil} functions
-into nil constants in Z3. The \texttt{:equal} function specifies an equality
-function for this algebraic datatype. The \texttt{:sums} option specifies all
-products in the sum. Each product contains a \texttt{:constructor} and a list of
-\texttt{:destructors}. Finally, the \texttt{:property-hints} specifies hints for
-proving the returned properties for this algebraic datatype.
-
-\begin{program}[h]
-  \caption{The \texttt{:arrays} datatypes hint}
-  \label{prog:arrayhint}
-  \lstinputlisting[language=Lisp]{progs/hint-array.lisp}
-\end{program}
-
-As is with \texttt{:sumtypes}, for \texttt{:arrays}, one provides a recognizer
-function through the \texttt{:recognizer} option. The \texttt{:key-type} and
-\texttt{:val-type} options provide type for the key and the value respectively.
-The \texttt{:init} option specifies the initialization function for an empty
-array. Its \texttt{:fn} option specifies the function and its \texttt{:val}
-option specifies the default value function name. The option \texttt{:select}
-and \texttt{:store} specifies the \texttt{Select} and \texttt{Store} functions
-for this array sort. The \texttt{:equal} option specifies the equality function
-for this array sort and \texttt{:equal-witness} is the witness function for the
-equality. The \texttt{:property-hints} specifies hints for proving the returned
-properties for this array sort.
-
-\begin{program}[h]
-  \caption{The \texttt{:abstracts} datatypes hint}
-  \label{prog:abstracthint}
-  \lstinputlisting[language=Lisp]{progs/hint-abstract.lisp}
-\end{program}
-
-For \texttt{:abstracts}, one merely provides a recognizer through
-\texttt{:recognizer} and an equality function through \texttt{:equal}.
-The \texttt{:property-hints} specifies hints for proving the returned
-properties for this abstract sort.
-
-\paragraph{replaces: }
-
-\begin{program}[h]
-  \caption{The \texttt{:replaces} smtlink hint}
-  \label{prog:replacehint}
-  \lstinputlisting[language=Lisp]{progs/hint-replaces.lisp}
-\end{program}
-
-The \texttt{:replaces} option describes theorem statements that can be useful
-for term replacement. The term replacement option takes a list of theorem
-specifications which has its structure described at~\ref{prog:thmspec}.
-
-In the rest of this Chapter, we will discuss each of the verified
-clause-processors.
-
-\subsection{Process User Hints}
-The first verified clause processor processes user provided hints to Smtlink. It
-syntactically check the hint and processes user hints in flat list form into a
-structured data structure. It then generates a disjunct in the many disjunctions
-of the goal using \texttt{SMT::hint-please}. This disjunct informs the computed
-hint which next clause-processor to use and with which hint.
-
-Take~\ref{prog:poly} as an example, assume the initial goal is $G$ and initial
-hint is $h$, in this case, $G$ is the goal
-
-\begin{lstlisting}[style=codestyle,language=LISP]
-(this is a placeholder)
-\end{lstlisting}
-
-\noindent and $h$ is the hint \texttt{nil}. In this case, no user hint is
-provides, therefore the syntactical check passes and the verified clause
-processor produces the same goal $G$ and the structured hint $h'$:
-
-\begin{lstlisting}[style=codestyle,language=LISP]
-(this is a placeholder)
-\end{lstlisting}
-
-The clause processor consults the \texttt{SMT-architecture} table for the next
-clause processor to install. It then produces below disjunctions of clauses as
-output.
-
-\begin{lstlisting}[style=codestyle,language=LISP]
-  (this is a placeholder)
-\end{lstlisting}
-
-Note that since the goal itself is untouched, and that the
-\texttt{SMT::hint-please} disjunct always returns true, ACL2 can easily
-discharge the soundness lemma for this verified clause processor.
-
-\subsection{Add User Hypotheses}
-
-To use an \acs{SMT} solver effectively, one needs to know how to avoid
-overwhelming it with too many facts that push it over an exponential complexity
-cliff. The user can guide this process by adding hypotheses for the \acs{SMT}
-solver. The user hypotheses are established facts from the ACL2 logical world --
-theorems that are already proven. The user provides the name of the theorem
-statement and the bindings to the formals with the Smtlink hint.
-
-\begin{algorithm}[!ht]
-  \DontPrintSemicolon
-  
-  \KwInput{Clause $G$, Smtlink hint $h'$}
-  \KwOutput{New Clause $G_{hypo}$, Smtlink hint $h'$}
-
-  \SetKwFunction{null}{null}
-  \SetKwFunction{car}{car}
-  \SetKwFunction{mycdr}{cdr}
-  \SetKwFunction{mycons}{cons}
-  \SetKwFunction{not}{not}
-  \SetKwFunction{mtextract}{meta-extract}
-  \SetKwFunction{simpletv}{simple-term-vars}
-
-  \SetKwFunction{addhypo}{add-user-hypotheses}
-  \SetKwFunction{shhypo}{smtlink-hint->hypotheses}
-  \SetKwFunction{hpthm}{hypothesis->thm}
-  \SetKwFunction{hpsubst}{hypothesis->subst}
-  \SetKwFunction{exlambda}{expand-lambda}
-  \SetKwFunction{createsubst}{create-subst}
-  
-  \;
-  $HypoList \longleftarrow $\shhypo{$h'$}\;
-  $G_{hypo} \longleftarrow G$\;
-  \addhypo{$G_{hypo}, HypoList, state$}\;
-  \;
-  \Fn{\addhypo{$G_{hypo}, HypoList, state$}}{
-    \If{\null{$HypoList$}}{
-      \Return $G_{hypo}$
-    }\Else{
-      $Hypo$, $HypoList$ $\longleftarrow$ \car{$HypoList$}, \mycdr{$HypoList$}\;
-      
-      $HypoThmName \longleftarrow$ \hpthm{$Hypo$}\;
-      $HypoThm \longleftarrow$ \mtextract{$HypoThmName, w$}\;
-      
-      $HypoThmExpanded \longleftarrow$ \exlambda{$HypoThm$}\;
-
-      $Vars \longleftarrow$ \simpletv{$HypoThmExpanded$}\;
-      $UserSubst \longleftarrow$ \hpsubst{$Hypo$}\;
-      $Subst \longleftarrow$ \createsubst{$UserSubst$, $Vars$}\;
-      $HypoThmSubsted \longleftarrow [Subst]HypoThmExpanded$\;
-      
-      $G_{hypo} \longleftarrow$ \mycons{\not{$HypoThmSubsted$}, $G_{hypo}$}\;
-      \Return \addhypo{$G_{hypo}, HypoList, state$}
-    }
-  }
-
-  \caption{Add User Hypotheses}\label{alg:userhypo}
-\end{algorithm}
-
-Given the input clause $G$ and the Smtlink hint $h'$,
-Algorithm~\ref{alg:userhypo} shows the algorithm for the adding user hypotheses
-clause processor. First, the list of hypotheses $HypoList$ is extracted from the
-Smtlink hint data structure. For each of the hypothesis in the list, first, we
-use \texttt{meta-extract} to get the theorem statement using the name of the
-theorem $HypoThmName$. The theorem is expanded out to eliminate lambdas. Then we
-create a binding for substitution $Subst$ and substitute it into the expanded
-term $HypoThmSubsted$. Finally, the substituted theorem statement
-$HypoThmSubsted$ is negated and added into the list of disjunctions of the goal.
-
-The \texttt{meta-extract} mechanism allows Smtlink to extract facts from the
-logical world of ACL2. These are proven facts therefore must be valid. We then
-add the fact as one of the hypotheses of the goal. We can reason that this
-transformation over the syntax of the original goal is a sound transformation
-and doesn't change the logical meaning of the original goal. This rule-guided
-transformation of the goal is a main theme of our reflection-based verified
-clause-processors. 
-
-\subsection{Expand Functions}
-
-\begin{table}[h!]
-  \begin{center}
-    \caption{Built-in Functions}
-    \label{tb:builtin}
-    \begin{tabular}{|l|c|r|}
-      \textbf{built-in function} & \textbf{SMT interface}\\
-      \hline
-      \texttt{binary-+} & \texttt{\_SMT\_.plus}\\
-      \texttt{binary-*} & \texttt{\_SMT\_.times}\\
-      \texttt{unary-/} & \texttt{\_SMT\_.reciprocal}\\
-      \texttt{unary--} & \texttt{\_SMT\_.negate}\\
-      \texttt{equal} & \texttt{\_SMT\_.equal}\\
-      \texttt{<} & \texttt{\_SMT\_.lt}\\
-      \texttt{if} & \texttt{\_SMT\_.ifx}\\
-      \texttt{not} & \texttt{\_SMT\_.notx}\\
-    \end{tabular}
-  \end{center}
-\end{table}
-
-The next clause processor expands functions.
-We define a set of built-in functions~\ref{tb:builtin}. User-defined functions
-are expanded out. Recursive functions are expanded to a provided depth. The
-result of expansion is composed of only built-in functions and user-defined
-functions that are not fully expanded.
-The Z3 interface class provides SMT equivalents for built-in functions.
-Occurrences of user-defined functions are treated as uninterpreted functions.
-
-Given the input clause $G_{hypo}$ and the Smtlink hint $h'$,
-Algorithm~\ref{alg:expand1} shows the algorithm for function expansion. Suppose
-the inputs to the function expansion clause processor are $G_{hypo}$ and $h'$.
-The algorithm first prepare the goal by disjoining the list of disjunctions and
-construct the information needed for function expansion from the smtlink hint.
-Three accumulators are introduced. $FnLvls$ remembers how many levels are left
-to expand functions. $TermVarAlist$ remembers new variables generated for
-subterms. $Avoid$ remembers free variables that appears in the goal and have
-been generated. Function \texttt{expand-term} and \texttt{expand-term-list} are
-the mutual recursion describing the algorithm for function expansion.
-
-If $Term$ exists in $TermVarAlist$, then return the stored variable. Otherwise
-if the $Term$ is a function call that requires generating a fresh var, we first
-recursively call \texttt{expand-term-list} on the actuals. If the function $Fn$
-should not be expanded (\texttt{dont-expand} returns \texttt{t}), return the
-term with updated actuals. Otherwise, generate new variables for the actuals and
-construct the updated term. Then, expand the function by substituting the
-actuals into the body of the function definition. We update the \texttt{FnLvls}
-after the expansion and recursively call \texttt{expand-term} over the resulting
-expanded term. Finally, generate a new variable for the resulting term.
-The \texttt{expand-term-list} function expands a list of terms by recursively
-calling \texttt{expand-term} over a list of terms. Note that the termination
-proof of  this algorithm relies on an additional variable $Clock$ which is not
-shown in the pseudo-code. The function \texttt{function-substitution} uses
-\texttt{meta-extract} to extract a function definition rule from the ACL2 world.
-The function definition rule gives us a fact that states an equality between the
-function call and function body. The soundness of the function expansion
-algorithm originates from these function definition rules.
-
-\begin{algorithm}[!ht]
-  \DontPrintSemicolon
-  
-  \KwInput{Clause $G_{hypo}$, Smtlink hint $h'$}
-  \KwOutput{New Clause $G_{expand}$, Smtlink hint $h'$}
-
-  \SetKwFunction{mycdr}{cdr}
-  \SetKwFunction{consp}{consp}
-  \SetKwFunction{disjoin}{disjoin}
-  \SetKwFunction{consopt}{construct-expand-options}
-  \SetKwFunction{expand}{expand-term}
-  \SetKwFunction{genvar}{generate-freshvar}
-  \SetKwFunction{expandlist}{expand-term-list}
-  \SetKwFunction{dontexpand}{dont-expand}
-  \SetKwFunction{newvar}{new-var-for-term}
-  \SetKwFunction{newvarlist}{new-vars-for-term-list}
-  \SetKwFunction{funcsubst}{function-substitution}
-  \SetKwFunction{updatelvl}{update-fn-lvls}
-  
-  \;
-  $G_{expand} \longleftarrow$ \disjoin{$G_{hypo}$}\;
-  $Options \longleftarrow$ \consopt{$h'$}\;
-  $FnLvls \longleftarrow nil$\;
-  $TermVarAlist \longleftarrow nil$\;
-  $Avoid \longleftarrow$ \simpletv{$G_{hypo}$}\;
-  \expand{{$G_{expand}, Options, FnLvls, TermVarAlist, Avoid, state$}}\;
-  \;
-  \Fn{\expand{$Term, Options, FnLvls, TermVarAlist, Avoid, state$}}{
-    \If{$Term$ \in $TermVarAlist$}{
-      \Return $TermVarAlist[Term]$, $TermVarAlist$, $Avoid$
-    }\ElseIf{\genvar{$Term$}}{
-      $Fn \longleftarrow$ \car{$Term$}\;
-      $Actuals \longleftarrow$ \mycdr{$Term$}\;
-      $Actuals, TermVarAlist, Avoid \longleftarrow$
-      \expandlist{$Actuals, Options, FnLvls, TermVarAlist, Avoid, state$}\;
-      \If{\dontexpand{$Fn, Options, FnLvls$}}{
-        $Term \longleftarrow$ \mycons{$Fn, Actuals$}\;
-        \Return $Term$, $TermVarAlist$, $Avoid$
-      }
-      \Else{
-        $ActualVars, TermVarAlist, Avoid \longleftarrow$
-        \newvarlist{$Actuals, TermVarAlist, Avoid$}\;
-        $VarTerm \longleftarrow$ \mycons{$Fn, ActualVars$}\;
-        $SubstedBody \longleftarrow$ \funcsubst{$VarTerm, state$}\;
-        $FnLvls \longleftarrow$ \updatelvl{$Fn, Options, Fnlvls$}\;
-        $Term, TermVarAlist, Avoid \longleftarrow$
-        \expand{$SubstedBody, Options, FnLvls, TermVarAlist, Avoid, state$}\;
-        \Return \newvar{$Term, TermVarAlist, Avoid$}
-      }
-    }
-    \Else{
-      \Return $Term$, $TermVarAlist$, $Avoid$
-    }
-  }
-  \caption{Expand Functions (Part1 of 3)}\label{alg:expand1}
-\end{algorithm}
-
-\begin{algorithm}
-  \DontPrintSemicolon
-  
-  \SetKwFunction{acons}{acons}
-  \SetKwFunction{exoptfunc}{expand-options->functions}
-  \SetKwFunction{funcdepth}{smt-function->depth}
-  \SetKwFunction{flambdap}{flambdap}
-  
-  \setcounter{AlgoLine}{27}
-  \Fn{\expandlist{$TermList, Options, FnLvls, TermVarAlist, Avoid, state$}}{
-    \If{\consp{$TermList$}}{
-      $TermHd \longleftarrow$ \car{$TermList$}\;
-      $TermTl \longleftarrow$ \mycdr{$TermList$}\;
-      $TermHd, TermVarAlist, Avoid \longleftarrow$
-      \expand{$TermHd, Options, FnLvls, TermVarAlist, Avoid, state$}\;
-      $TermTl, TermVarAlist, Avoid \longleftarrow$
-      \expandlist{$TermTl, Options, FnLvls, TermVarAlist, Avoid, state$}\;
-      $TermList \longleftarrow$ \mycons{$TermHd, TermTl$}\;
-      \Return $TermList, TermVarAlist, Avoid$
-    }
-    \Else{
-      \Return $nil, TermVarAlist, Avoid$
-    }
-  }
-  \;
-  \Fn{\dontexpand{$Fn, Options, FnLvls$}}{
-    $Functions \longleftarrow$ \exoptfunc{$Options$}\;
-    \If{$Fn$ \in $FnLvls$}{
-      \Return $FnLvls[Fn] \leq 0$
-    }
-    \ElseIf{$Fn$ \in $Functions$}
-    {
-      $FnOpt \longleftarrow Functions[Fn]$\;
-      \Return \funcdepth{$FnOpt$} $\leq 0$
-    }
-    \Else{
-      \Return $nil$
-    }
-  }
-  \;
-  \Fn{\updatelvl{$Fn, Options, Fnlvls$}}{
-    $Functions \longleftarrow$ \exoptfunc{$Options$}\;
-    \If{$Fn$ \in $FnLvls$}{
-      $FnLvls \longleftarrow$ \acons{$Fn, FnLvls[Fn]-1, FnLvls$}
-    }
-    \ElseIf{$Fn$ \in $Functions$}{
-      $FnOpt \longleftarrow Functions[Fn]$\;
-      $FnLvls[Fn] \longleftarrow $
-        \acons{$Fn$, \funcdepth{$FnOpt$}$-1$, $FnLvls$}
-    }
-    \Else{
-      $FnLvls[Fn] \longleftarrow 0$
-    }
-    \Return $FnLvls$
-  }
-
-  \caption{Expand Functions (Part 2 of 3)}\label{alg:expand2}
-\end{algorithm}
-
-\begin{algorithm}
-  \DontPrintSemicolon
-
-  \SetKwFunction{pattern}{pattern-match}
-  \SetKwFunction{sowu}{simple-one-way-unify}
-
-  \setcounter{AlgoLine}{58}
-  \Fn{\funcsubst{$Term, state$}}{
-    $Fn \longleftarrow$ \car{$Term$}
-    \If{\flambdap{$Fn$}}{
-      \Return \exlambda{$Term$}
-    }
-    \Else{
-      $Formula \longleftarrow$ \mtextract{$Fn, state$}\;
-      $Lhs, Rhs \longleftarrow$ \pattern{$Formula$, ('equal\ Lhs\ Rhs)}\;
-      $Subst \longleftarrow$ \sowu{$Lhs, Term, nil$}\;
-      \Return $[Subst]Rhs$
-    }
-  }
-  \;
-  \Fn{\newvar{$Term, TermVarAlist, Avoid$}}{
-    \If{\genvar{$Term$}}{
-      \Return $Term, TermVarAlist, Avoid$
-    }\Else{
-      $Var \longleftarrow$ \newvar{$Avoid$}\;
-      $TermVarAlist \longleftarrow$ \acons{$Term, Var, TermVarAlist$}\;
-      $Avoid \longleftarrow$ \mycons{$Var, Avoid$}\;
-      \Return $Var, TermVarAlist, Avoid$
-    }
-  }
-
-  \Fn{\newvarlist{$TermList, TermVarAlist, Avoid$}}{
-    \If{\consp{$TermList$}}{
-      $TermHd \longleftarrow$ \car{$TermList$}\;
-      $TermTl \longleftarrow$ \mycdr{$TermList$}\;
-      $VarHd, TermVarAlist, Avoid \longleftarrow$
-      \newvar{$TermHd, TermVarAlist, Avoid$}\;
-      $VarTl, TermVarAlist, Avoid \longleftarrow$
-      \newvarlist{$TermTl, TermVarAlist, Avoid$}\;
-      \Return \mycons($VarHd, VarTl$), $TermVarAlist$, $Avoid$
-    }\Else{
-      \Return $TermList, TermVarAlist, Avoid$
-    }
-  }
-  \caption{Expand Functions (Part 3 of 3)}\label{alg:expand3}
-\end{algorithm}
-
-In terms of time complexity, suppose the number of arguments for a function is
-$w_i$ and the depth of a function definition tree is $h_i$. For a recursive
-function, the number of levels of expansion $l_i$ should be taken into
-consideration, resulting in a total depth of $h_i\times l_i$. Treating the final
-expansion result as a large tree, its depth will be $\max(h_i\times l_i)$ and
-its width should be $\max(w_i)$. This means the number of recursive calls to
-\texttt{expand-term} should be bounded by $O(\max(w_i)^{\max(h_i\times l_i)})$.
-For each such \texttt{expand-term} call, the complexity is bounded by the
-maximum of the size of $FnLvls$, $TermVarAlist$, $Avoid$ and function body
-sizes. Let's call it $\delta$. Then the total time complexity is
-$O(\max(w_i)^{\max(h_i\times l_i)}\times\delta)$.
-
-\subsection{Reorder Hypotheses}
-
-The type inference algorithm replies on the type hypotheses of free variables in
-the goal coming before all other disjunctions. Therefore, we introduce the next
-clause processor for reordering hypotheses. More specifically, it reorders the
-disjunctions so that the typing hypotheses come first.
-
-\begin{algorithm}
-  \DontPrintSemicolon
-
-  \SetKwFunction{reorder}{reorder-hypotheses}
-  \SetKwFunction{extract}{extractor}
-  \SetKwFunction{filterth}{filter-type-hypo}
-  \SetKwFunction{makevt}{make-var-to-terms}
-  \SetKwFunction{maketv}{make-term-to-vars}
-  \SetKwFunction{orderhypo}{order-hypo-lst}
-  \SetKwFunction{addhypo}{add-hypotheses}
-  \SetKwFunction{findresolved}{find-resolved-var}
-  \SetKwFunction{update}{update}
-  \SetKwFunction{remove}{remove}
-  
-  \Fn{\reorder{$Term, Types$}}{
-    $HypoList, RestTerm \longleftarrow$ \extract{$Term, Types$}\;
-    $RootHypo, RestHypo \longleftarrow$ \filterth{$HypoList, Types$}\;
-    $VarTermAlist \longleftarrow$ \makevt{$RestHypo$}\;
-    $TermVarAlist \longleftarrow$ \maketv{$RestHypo$}\;
-    $OrderedHypo \longleftarrow$ \orderhypo{$RootHypo$, $VarTermAlist$,
-      $TermVarAlist$, $RestHypo$, $Types$}\;
-    \Return \addhypo{$OrderedHypo, RestTerm$}
-  }
-
-  \Fn{\orderhypo{$WorkList, VarTermAlist, TermVarAlist, OtherHypos, Types$}}{
-    \If{\consp{$WorkList$}}{
-      $WorkHd \longleftarrow$ \car{$WorkList$}\;
-      $WorkTl \longleftarrow$ \mycdr{$WorkList$}\;
-      $ResolvedVar \longleftarrow$ \findresolved{$WorkHd$}\;
-      \If{$ResolvedVar$ \in $VarTermAlist$}{
-        $TermVarAlist, WorkList \longleftarrow$
-        \update{$VarTermAlist[ResolvedVar], TermVarAlist, WorkTl,
-          ResolvedVar$}\;
-        $WorkTl \longleftarrow$ \orderhypo{$WorkList, VarTermAlist, TermVarAlist,
-          OtherHypos, Types$}\;
-        \Return \mycons{$WorkHd, WorkTl$}
-      }\Else{
-        $WorkTl \longleftarrow$ \orderhypo{$WorkTl, VarTermAlist, TermVarAlist,
-          OtherHypos, Types$}\;
-        \Return \mycons{$WorkHd, WorkTl$}
-      }
-    }\Else{
-      \Return $nil$
-    }
-  }
-  \caption{Reorder Hypotheses (Part 1 of 2)}\label{alg:reorder1}
-\end{algorithm}
-
-\begin{algorithm}
-  \DontPrintSemicolon
-
-  \setcounter{AlgoLine}{21}
-  \Fn{\update{$TermList, TermVarAlist, WorkList, ResolvedVar$}}{
-    \If{\consp{$TermList$}}{
-      $TermHd \longleftarrow$ \car{$TermList$}\;
-      $TermTl \longleftarrow$ \mycdr{$TermList$}\;
-      \If{$TermHd$ \in $TermVarAlist$}{
-        $Vars \longleftarrow TermVarAlist[TermHd]$\;
-        $Vars \longleftarrow$ \remove{$ResolvedVar, Vars$}\;
-        \If{\consp{$Vars$}}{
-          $TermVarAlist \longleftarrow$ \acons{$TermHd, Vars, TermVarAlist$}\;
-          \Return \update{$TermTl, TermVarAlist, WorkList, ResolvedVar$}
-        }\Else{
-          $TermVarAlist \longleftarrow$ \acons{$TermHd, nil, TermVarAlist$}\;
-          $WorkList \longleftarrow$ \mycons{$TermHd, WorkList$}\;
-          \Return \update{$TermTl, TermVarAlist, WorkList, ResolvedVar$}
-        }
-      }\Else{
-        \Return \update{$TermTl, TermVarAlist, WorkList, ResolvedVar$}
-      }
-    }\Else{
-      \Return $TermVarAlist, WorkList$
-    }
-    \caption{Reorder Hypotheses (Part 2 of 2)}\label{alg:reorder2}
-}\end{algorithm}
-
-Algorithm~\ref{alg:reorder1} and~\ref{alg:reorder2} shows the algorithm for
-reordering hypotheses. First, the hypotheses list of interest are extracted from
-the goal. Then \texttt{filter-type-hypo} extracts hypotheses that are type
-predicates from this hypotheses list. The reordering algorithm is a topological
-sort algorithm. We define the set of type predicates as the initial work list.
-Then we generate an alist that maps from a variable to the list of hypothesis
-containing that variable, named as $VarTermAlist$, and another alist that maps
-from a term to all variables that appear in the term, named as $TermVarAlist$.
-
-Given the current work list, the function \texttt{order-hypo-lst} shows how the
-tables are updated. For each term in the work list, get the variable that is
-resolved from the term. Get the list of terms that depend on this variable by
-consulting the table $VarTermAlist$. For each term, update the $TermVarAlist$
-table by removing the variable from the list of variables that appears in the
-term. If any such list becomes empty, we know all variables of this hypothesis
-have been resolved, and we can add it onto the work list.
-
-Suppose the size of the term is $S$, there are $m$ hypotheses of interest and
-each of them have at most $n$ variables to resolve. We know $m\times n < S$.
-The size of $TermVarAlist$ is then $O(m)$ and the size of $VarTermAlist$ is
-$O(m\times n)$. The size of the work list at any given time is bounded by
-$O(m)$. The \texttt{update} function has a time complexity of $O(m\times(m+n))$.
-Therefore the total run time is $O(m\times(n+m\times(m+n))) < O(S^3)$.
-Note that if all the alists are fast alists (that is they are hash tables), then
-the amortized time complexity becomes $O(m\times m\times n) < O(S^2)$.
-
-\subsection{Infer Types}
-
-\subsubsection{\texttt{typed-term}}
-
-\subsubsection{The Bottom-up Pass}
-
-\begin{algorithm}
-  \caption{The Bottom-up Type Inference}\label{alg:bottomup}
-\end{algorithm}
-
-\subsubsection{The Top-Down Pass}
-
-\begin{algorithm}
-  \caption{The Top-down Type Inference}\label{alg:topdown}
-\end{algorithm}
-
-\subsection{Replace Terms}
-
-\begin{algorithm}
-  \caption{Replace Terms}\label{alg:replace}
-\end{algorithm}
-
-\subsection{Generate Trusted Clause-processor Hints}
-
-\subsection{Extract Types}
-
-\section{The Trusted Clause Processor and the SMT Solver}
-
-\section{Conclusion}
+\end{comment}

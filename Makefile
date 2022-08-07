@@ -74,3 +74,5 @@ CP=		cp -p
 
 doc.pdf: diss.pdf
 	$(CP) diss.pdf doc.pdf
+	$(CP) diss.pdf /mnt/Work/diss/
+

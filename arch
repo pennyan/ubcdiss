@@ -1,0 +1,55 @@
+Main message:
+
+Smtlink connects the ACL2 interactive theorem prover with an SMT solver using meta-programming and reflection. The architecture is a pipeline of rule-based transformers that compiles a term in the untyped first order logic of ACL2 to the many-sorted first order logic of SMT. Each transformation is guided by theorems established in ACL2. The final step is a direct translation from ACL2 formulas to their SMT counterparts. Properties over the SMT sorts and their associated functions are returned back to ACL2 for establishing the soundness of the last step. This makes the soundness argument straightforward.
+
+Sections:
+
+1. Technical challenges
+
+1.1 Untyped vs typed
+Problem: The ACL2 theorem prover is untyped but Z3 is many-sorted.
+Solution: Perform type inference over ACL2 terms.
+
+1.2 Connects ACL2 types with Z3 types
+Problem: Through type-inference, we get an ACL2 term that is typed with respect to ACL2 types. Sometimes, they have direct correspondence with SMT (e.g. Bool and Integer), sometimes they don't (e.g. (car nil) and association lists).
+Solution: Term transformation that transforms a term using ACL2 type (e.g. alist-p) or functions (e.g. car) to a term using ACL2-embedded SMT types (e.g. Array-p) or functions (e.g. integer-list-car).
+
+1.3 Soundness
+Problem: How do we know the final transliteration is sound?
+Solution: Prove that the ACL2-embedded SMT type satisfy the theory of the corresponding SMT sorts.
+
+2. Meta-programming and Reflection in ACL2
+
+2.1 Clause-processors
+2.2 Pseudo-evaluator
+2.3 Meta-extract
+2.4 Computed-hints
+
+3. Global Architecture
+This section is a high-level description of the architecture. There should be a
+graph. This section doesn't talk about each step in the pipeline. Instead it
+desribes how the clause processors are connected together through computed hints
+and the connection to Z3.
+
+Show an example that run through the architecture.
+
+4. Verified Clause-processors
+A top-level description of how the rule-guided transformations work.
+
+4.1 Adding User Hypotheses
+
+4.2 Beta reduction
+
+4.3 Type inference
+
+4.4 Term transformation
+
+5. The Trusted Clause-processor
+
+5.1 Supported SMT Sorts and Functions
+5.2 Properties for each SMT Sort
+5.3 Uninterpreted functions
+
+
+
+

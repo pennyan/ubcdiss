@@ -1,0 +1,81 @@
+Thesis statement: Metaprogramming and reflection provide a logically sound way
+to transform high-level proof goals in an interactive theorem prover into goals
+that can be proven automatically by an SMT solver.
+
+Chapter summary: The architecture of Smtlink is built upon the reasoning
+framework provided by metaprogramming and reflection. This architecture is
+composed of a pipeline of verified clause processors leading to a final trusted
+clause processor that provides the low-level interface to the SMT solver.
+
+1. Overview:
+Metaprogramming and reflection refers to the technique of being able to take a
+term in a programming language as data, examine and manipulate the term in the
+same language. ACL2 is a dialect of Lisp, which makes it very easy to apply this
+technique.
+
+What's different from other reflective programming is that, in addition to
+manipulating the term, ACL2 also provides a way of proving that the resulting
+term maintains the logical meaning of the original term, therefore ensures
+soundness.
+
+yan> This is done via the meta-extract mechanism. Meta-extract allows us to use
+yan> established rules in ACL2 and use them to guide the transformation of an ACL2
+yan> theorem term.
+
+mrg> This is done by introducing evaluators for a statically specified set of functions.
+mrg> Because these functions are already defined when the evaluator is introduced, such
+mrg> evaluators are compatible with the first-order logic of ACL2.  To reason about
+mrg> user provided functions and theorems, ACL2 provides a mechanism called \emph{meta-extract}.
+mrg> Meta-extract provides Smtlink with s-expressions that represent facts that have been
+mrg> establihed in the ACL2 mrg> logical world.  These facts can be manipulated using
+mrg> an evaluator as just described.  The combination of a simple evalutor with meta-extract
+mrg> allows very general reasoning about the functions and theorems present in the ACL2
+mrg> logical world when Smtlink is invoked.
+
+
+yan> The architecture of Smtlink is largely based on this mechanism.
+mrg> "this mechanism" -> "these mechanisms" -- because I described two mechanisms: evaluators and meta-extract.
+For example, type inference uses rules about types for guiding the inference of types of
+sub-terms of an ACL2 term.
+
+2. Background:
+This chapter describes: verified and trusted clause-processors, computed-hints,
+evaluators, and Meta-extract.
+
+3. Overview of the architecture:
+This chapter is an overview of the whole Smtlink architecture. Show a graph of
+the architecture of Smtlink and give one or more examples to explain what each
+stage does. This chapter should be example-guided.
+
+4. Description of the verified clause-processors:
+This chapter gives detailed description of each verified clause-processor. The
+description is not example-guided, but provides more technical details.
+
+a. What transformation is performed and why?
+b. What hint is provided for this clause-processor?  -- The user configures
+Smtlink through user-provided hints, and each of these hints guide each stage in
+these transformations.
+c. How did metaprogramming and meta-extract enable implementing the
+clause-processor?
+mrg> d.  A few "interesting" points about the implementation of the clause processor.
+mrg>     This should not be a detailed description of how the code was written.
+mrg>     Assume that the reader knows standard algorithms, data structures, and how to write a compiler or interpreter.
+mrg>     Instead, were there non-obvious issues for programming in a framework
+mrg>     where your transformations of the goal are based on "facts" obtained from meta-extract.
+mrg>     Think of it as:  "If the Yan today could write 3-10 sentences about each clause processor
+mrg>     to send to the Yan of 3 years ago, what insight could you provide that would have made your
+mrg>     work way easier?".  Another way of phrasing this is "What did you learn?".
+
+
+(Mark, I think the description of the trusted clause-processor should be in
+Soundness chapter, but it also seems plausible to put it in architecture. Let me
+know what you think.)
+mrg: The trusted clause processor *definitely* belongs here.  The architecture chapter
+mrg: should define the complete architecture of Smtlink.  This includes the trusted
+mrg: clause processor, and a description of computed hints to "guide" the main goal
+mrg: from one clause processor to the next.  When describing the trusted clause processor
+mrg: you can describe what it takes as an input (the transformed goal, and a hint),
+mrg: that it transliterates the goal to an SMT formula, using the hint to know how
+mrg: to replace user-defined functions in the goal, with smt functions for the smt-solver
+mrg: and how the trusted clause processor produces subgoals to verify that the user
+mrg: defined functions have the claimed properties.
