@@ -1,2 +1,169 @@
 \chapter{Soundness}
 \label{ch:soundness}
+
+\smtlink{} is composed of several verified reflection-based clause-processors
+that transforms the original goal into a form that can be directly translated
+into Z3.
+Then \smtlink{} uses a trusted clause-processor for transliterating from the
+language of ACL2 to the language of Z3 with the Python interface.
+This chapter focus on discussing the soundness of Smtlink.
+
+\section{Assumptions}\label{sec:soundness:assumpt}
+The soundness of Smtlink is based on the following assumptions:
+
+\begin{assumption}\label{sec:soundness:assumpt1}
+  ACL2 and the \acs{SMT} solver are both sound for their respective
+  theories.
+\end{assumption}
+\smtlink{} trust both ACL2 and Z3.
+
+\begin{assumption}\label{sec:soundness:assumpt2}
+  If the solvers used by the SMT solver on translated ACL2 formulas
+  successfully verify a formula (i.e. they show that (not claim-smt)
+  is unsatisfiable), then the claim is a theorem of the axioms for the
+  many-sorted first-order logic of SMTLIB
+\end{assumption}
+In addition, we are working with a quantifier-free fragment of Z3's
+logic.
+
+\begin{assumption}
+  There is a one-to-one correspondence between the free variables of $\Gtcp$
+  and the free variables of $\Gsmt$.
+\end{assumption}
+This is the case with the current implementation of \smtlink{}. The
+transliteration ensures that there is no naming collision.
+
+\begin{assumption}
+  There is a one-to-one correspondence between the functions of $\Gtcp$
+  and the functions of $\Gsmt$.
+\end{assumption}
+
+\begin{assumption}
+  The SMT solvers reject any term that is not well-sorted.
+\end{assumption}
+
+A verified clause-processor ensures that the conjunction of output clauses
+implies the input clause.
+Given Assumption~\ref{sec:soundness:assumpt1}, assuming ACL2 is sound, the
+pipeline of verified clause processors are sound.
+However, an intrepid user might choose to use the trusted clause-processor by
+itself. Therefore it is crucial that the soundness argument for the trusted 
+clause-processor stands on its own.
+
+In this chapter, we focus on the last trusted clause-processor and discuss how
+we formulate the soundness argument for this last step.
+
+
+\section{The Top-Level Proof}
+Now, let $G$ denote the original goal, $\Gtcp$ denote the input goal to the
+trusted clause-processor, and $\Gsmt$ denote the transliterated \acs{SMT} goal.
+Let $x_1$, $x_2$, \ldots, $x_n$ denote the free variables in $\Gtcp$, and
+$\tilde{x}_1$, $\tilde{x}_2$, \ldots, $\tilde{x}_n$ denote the free variables of
+$\Gsmt$.
+As described in Section~\label{sec:soundness:assumpt}, for each free variable in
+$\Gtcp$, there is an associated type-recognizer that we denote as $T(x_i)$.
+$\Gtcp$ is a theorem if it holds in all models of the first-order logic of ACL2.
+Suppose that $\Gtcp$ is not a theorem in ACL2.  Then, by G\"{o}del's
+Completeness Theorem, there exists a model of the ACL2 axioms that satisfies
+$\neg \Gtcp$.
+If we can show that a model of the theory of ACL2 for $\neg \Gtcp$ implies a
+model of the theory of the SMT solver for $\neg \Gsmt$, then, by
+Assumption~\ref{sec:soundness:assumpt1} we establish the soundness of the
+trusted clause processor. 
+
+We formulate the main claim as the following:
+
+\emph{CLAIM} Assume that $\Gtcp$ is a (quantifier-free) formula of ACL2 that is
+   well-typed.  Also assume that its translation $\Gsmt$ is verifiable by
+   the intended SMT solvers.  Then $\Gtcp$ is a theorem of ACL2.
+\\
+
+\emph{Proof sketch} ``SMT axioms'' refers to the axioms alluded to
+in Assumption~\ref{sec:soundness:assumpt2}, and ``well-typed'' means that
+necessary ACL2 theorems (see Section~\ref{sec:soundness:sorts}) have
+   been proved to permit suitable translation to SMT for the argument below.
+   Let's call their conjunction $Ax$.
+   Assume the hypotheses.
+   \\
+   \begin{enumerate}
+   \item Suppose, for a contradiction, that $\Gtcp$ is not a theorem of ACL2.
+      Hence neither is the implication $(Ax \rightarrow \Gtcp)$.
+   \item Then by Goedel Completeness, there is a model $M_{acl2}$ satisfying
+      $Ax$ and $(\neg \Gtcp)$.
+   \item We can then construct a model $M_{smt}$ for SMT of the translation
+      $(\neg \Gsmt)$ of $(\neg \Gtcp)$ that satisfies the SMT axioms. \Yan{This
+        is a question for Matt. What does ``can then construct a model'' mean?
+        Does it mean we can safely claim there will be a model or do we have to
+        construct it?}
+   \item By a suitable completion/closure procedure, we can build a model
+      $M_{smt'}$ for SMT in which $M_{smt}$ sits as a submodel -- so $M_{smt'}$
+      also satisfies $(\neg \Gsmt)$, since $\Gsmt$ is quantifier-free. \Yan{This
+      is a question for Matt. For this proof step, what does it mean by ``a
+      suitable completion/closure procedure''? Is there an example that I can
+      follow? What sorts (except int to real and cons of lists) needs to be
+      included in this completion/closure procedure?}
+   \item Therefore $\Gsmt$ is not a first-order theorem of SMT (else it would
+      hold in $M_{smt'}$).
+   \item By Assumption~\ref{sec:soundness:assumpt2}, $\Gsmt$ is not verifiable
+     by the intended SMT solvers, contradicting the hypotheses.
+   \end{enumerate}
+
+\section{SMT Sorts and the Axioms}\label{sec:soundness:sorts}
+The logic of ACL2 is more expressive than that of the SMT solvers. An ACL2 type
+recognizer could be an arbitrary ACL2 function. Therefore it
+is more straightforward to represent SMT sorts and their axioms in ACL2.
+
+We identify a set of SMT sorts and functions that are supported in Smtlink.
+Smtlink embeds the SMT sorts and functions in ACL2. The trusted clause-processor
+directly translates from the SMT sorts embedded in ACL2 to SMT.
+For each SMT sort, we identify the set of SMT axioms that corresponds to the
+sorts. The axioms must be established in ACL2 to ensure soundness of the
+translation.
+
+\subsection{BoolSort}
+
+\subsection{IntSort}
+\subsection{RealSort}
+ACL2 doesn't really have real numbers, though it has the rationale to support
+rational numbers. The rational numbers form an ordered field. The Artin-Schreier
+theorem shows that the algebraic closure of the rationals is a real closed
+field\footnote{A real-closed field is a field that has the same first-order
+  properties as the field of the real numbers.}. This means that any model of
+the rationals corresponds to a model in the algebraic extension, which is also a
+model in the real numbers. \Yan{To Mark: I figured this description might be too
+  simple but I find it very hard to formulate.} Here, we need to establish that
+the rational numbers of ACL2 forms an ordered field.
+
+% We identify a set of functions over the rational numbers:
+% \texttt{rational-binary-+}, \texttt{rational-binary-*},
+% \texttt{rational-unary--}, \texttt{rational-unary-/}, \texttt{rational-<} and
+% \texttt{rational-=}. We then identify the set of axioms over these functions
+% that formulates an ordered field. The set of axioms also include type axioms.
+
+% \Yan{Could we work out what the axioms are together?}
+% http://homepages.math.uic.edu/~kauffman/axioms1.pdf
+
+% \Yan{Mention ACL2(r) here.}
+
+% \subsubsection{Int to Real}
+% We convert integers to rationals through the function \texttt{to-rat}. The
+% axioms for this function are:
+
+% \begin{itemize}
+%   \item \texttt{to-rat} takes an integer and returns a rational
+%   \item \texttt{to-rat} is an identity
+% \end{itemize}
+
+\subsection{Datatypes}
+
+\subsection{Arrays}
+
+\subsection{Uninterpreted Sorts}
+
+\subsection{Uninterpreted Functions}
+
+
+\section{Missing pieces}
+
+\subsection{ACL2 Symbols?}
+

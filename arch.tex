@@ -438,11 +438,10 @@ transformations achieved in each verified clause processor.
     translate the flattened goal into SMT and invoke the SMT solver.
 \end{itemize}
 
-\Yan{Show an example that run through the architecture.}
-
 \section{The Verified Clause-processors}
 \label{sec:vcp}
 \Yan{A top-level description of how the rule-guided transformations work.}
+\Yan{Show an example that run through the architecture. Most likely about integer-listp}
 
 \subsection{User Hypotheses Introduction}
 The user hypotheses introduction clause-processor allows the user to add
@@ -488,7 +487,7 @@ a data structure called typed-term.
 Second, a top-down pass will choose from all possible types a set of types that
 are consistent for assisting the translation to SMT.
 
-\subsection{Term Transformation (Conditional rewriting)}
+\subsection{User-specified Term Transformation}
 Smtlink allows term transformation for rewriting the goal. The motivation of
 term transformation is battle the gap between ACL2 and the SMT solvers. But it
 could also be used as a rewriting capability.

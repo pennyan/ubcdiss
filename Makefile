@@ -59,6 +59,7 @@ BIBTEX=		bibtex -min-crossref=1000
 RM=		rm -f
 MV=		mv
 CP=		cp -p
+RSYNC=		rsync -rv
 
 .tex.pdf:
 	$(PDFLATEX) $(LATEXFLAGS) $<
@@ -74,5 +75,4 @@ CP=		cp -p
 
 doc.pdf: diss.pdf
 	$(CP) diss.pdf doc.pdf
-	$(CP) diss.pdf /mnt/Work/diss/
-
+	$(RSYNC) --exclude=.git ./ /mnt/Work/diss/

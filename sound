@@ -1,0 +1,35 @@
+Let P be a proposed theorem for ACL2, and P is a translatable term.
+P is a theorem if it holds in all models of the first-order logic of ACL2.
+That means there are no models in ACL2 in which (not P) holds. (This is Godel's completeness theorem)
+Given a translation of P in SMT called P_smt, if we know P_smt doesn't have a model in SMT,
+and that if there is a model for P in ACL2, there must exist a model for P_smt in Z3,
+then we know P is a theroem in ACL2.
+
+
+4. Soundness
+
+introduction
+
+4.1 Assumptions
+
+One paragraph: soundness of ACL2 and SMT solvers, trusted clause-processor
+
+4.2 High-level proof sketch
+
+Matt's proof
+
+4.3 SMT axioms
+"well-typed" means that necessary ACL2 theorems have been proved to permit suitable translation to SMT
+
+4.3.1 Uninterpreted functions
+4.3.2 Algebraic
+4.3.3 Uninterpreted sorts
+4.3.4 Arrays
+
+We can bring in new types easily
+
+4.4 Dangling bits
+Things that are missing
+
+4.4.1 The trusted clause-processor
+4.4.2 The Python interface disallows overloading
